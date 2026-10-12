@@ -119,6 +119,21 @@ pnpm build      # bundles to dist/cli.mjs
 
 See [SPEC.md](SPEC.md) for the design.
 
+### Releasing
+
+Releases use [Changesets](https://changesets.dev):
+
+1. With a change, run `pnpm changeset` and commit the generated file.
+2. On `main`, the Release workflow opens a "Release: version packages" PR that bumps the version and updates `CHANGELOG.md`.
+3. Merging that PR publishes to npm through [trusted publishing](https://docs.npmjs.com/trusted-publishers), with no npm token, and creates a GitHub release.
+
+npm only allows trusted publishing for a package that already exists, so the very first version has to be published by hand:
+
+1. Merge the first version PR, then on an up-to-date `main` run `pnpm build && npm publish`.
+2. On npmjs.com, under the package's **Settings → Trusted publishing**, add GitHub Actions with repository `zanthrash/script-hop`, workflow `release.yml` and environment `npm`.
+
+After that, every merged version PR publishes automatically.
+
 ## License
 
 MIT
