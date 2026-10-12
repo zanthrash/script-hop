@@ -35,7 +35,7 @@ hop -- <args>       append args to the chosen script
 hop --help / -v     help / version
 ```
 
-Environment: `HOP_PM=<name>` — same as `--pm`.
+Environment: `HOP_PM=<name>` — same as `--pm` (empty is ignored). `HOP_HISTORY=<path>` — override the history file location.
 
 ## Package manager detection
 
@@ -89,7 +89,9 @@ Read, in order: `hop.descriptions`, `ntl.descriptions`, `scripts-info` (package.
 
 - Inline (no alternate screen), built on [`@inquirer/search`](https://github.com/SBoudrias/Inquirer.js) — we supply an ordered source function; the library does no filtering of its own.
 - Each row: name, source/workspace tag, highlighted fuzzy match characters.
-- Footer (inquirer `description`): description or command of the highlighted entry. For npm/yarn/bun, show `pre`/`post` hooks that will run (e.g. `prebuild → build → postbuild`); pnpm doesn't run them by default, so omit there.
+- Rendered on stderr so stdout stays clean. Ctrl-C or Esc cancels (exit 130).
+- Footer (inquirer `description`): description or command of the highlighted entry.
+- *Not yet built:* showing `pre`/`post` hooks that will run (e.g. `prebuild → build → postbuild`). Only npm, bun and Yarn 1 run them; pnpm and Yarn 2+ don't, so this needs the Yarn major version from detection.
 
 ## Ranking
 
@@ -103,11 +105,11 @@ Read, in order: `hop.descriptions`, `ntl.descriptions`, `scripts-info` (package.
 
 - Fuzzy matching via [`fzf`](https://github.com/ajitid/fzf-for-js) (fzf-for-js).
 - Match against **name and command**; name matches always outrank command-only matches.
-- **Fuzzy score is primary**, frecency is a tiebreaker / small boost.
+- **Fuzzy score is primary**, then an exact name match, then frecency.
 
 ### History storage
 
-- Single JSON file in the user state dir via `env-paths` (`~/.local/state/script-hop/history.json` on Unix, `%LOCALAPPDATA%` on Windows).
+- Single JSON file in the user data dir via `env-paths` (`~/Library/Application Support/script-hop/history.json` on macOS, `~/.local/share/script-hop/` on Linux, `%LOCALAPPDATA%\script-hop\Data\` on Windows), overridable with `HOP_HISTORY`.
 - Keyed by absolute path of the package.json directory, then script name: `{ count, score, lastRun }`.
 - Recorded **at launch**, not on success.
 - Writes are atomic (temp file + rename). Last-write-wins on races; acceptable.
@@ -118,8 +120,9 @@ Read, in order: `hop.descriptions`, `ntl.descriptions`, `scripts-info` (package.
 
 - Spawn the manager with `stdio: 'inherit'` (TTY, colors, interactive scripts all work).
 - Forward SIGINT/SIGTERM to the child; exit with the child's exit code.
-- Print the resolved command before running, e.g. `› pnpm run dev`.
-- Windows: handle `.cmd` shims (e.g. via `cross-spawn` or `tinyexec`).
+- Print the resolved command to stderr before running, e.g. `› pnpm run dev`.
+- Windows: `.cmd` shims handled by `cross-spawn`.
+- Manager binary missing → message suggesting `corepack enable` or `--pm`, exit 127.
 
 ## Edge cases
 
@@ -138,7 +141,7 @@ Read, in order: `hop.descriptions`, `ntl.descriptions`, `scripts-info` (package.
 |---|---|
 | Language | TypeScript, ESM |
 | Runtime | Node `>=22` (keep bun-compatible) |
-| Build | tsdown → single bundled ESM file |
+| Build | tsdown → single bundled ESM file `dist/cli.mjs` (config is `.mjs`, loaded with `--config-loader native`) |
 | Tests | vitest; core logic as pure functions tested against fixture repos (one per PM + workspace layouts). Picker is a thin shell. |
 | Dev PM | pnpm |
 | CI | GitHub Actions, matrix ubuntu/macos/windows × Node 22/24 |
@@ -148,9 +151,9 @@ Read, in order: `hop.descriptions`, `ntl.descriptions`, `scripts-info` (package.
 
 ```
 src/
-  cli.ts          arg parsing, wiring, exit codes
-  detect.ts       package manager + workspace root detection
-  sources/        TaskSource interface, package-json.ts, deno-json.ts
+  cli.ts          entry point: wires real IO into main
+  app.ts          main(argv, io): arg parsing, flow, exit codes (tested with fake IO)
+  tasks.ts        project discovery, PM detection, task sources, workspaces
   rank.ts         frecency + fuzzy combination (pure)
   history.ts      load/save/prune history file
   command.ts      build run command per manager (pure)
