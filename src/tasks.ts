@@ -19,6 +19,8 @@ export interface Task {
   scope: 'local' | 'root'
   /** Directory to run the task in. */
   cwd: string
+  /** `pre<name>` / `post<name>` scripts the runner will run around this one, if any. */
+  hooks?: { pre?: string; post?: string }
 }
 
 export interface Project {
@@ -60,6 +62,39 @@ async function detectPM(cwd: string, hasDenoConfig: boolean): Promise<PM> {
 }
 
 const exists = (path: string) => access(path).then(() => true, () => false)
+
+/** Nearest directory at or above `from` containing `file`. */
+async function findUp(file: string, from: string): Promise<string | undefined> {
+  for (let dir = resolve(from); ; dir = dirname(dir)) {
+    if (await exists(join(dir, file))) return join(dir, file)
+    if (dirname(dir) === dir) return undefined
+  }
+}
+
+/** Yarn 2+ dropped pre/post scripts; tell it apart from Yarn 1. */
+async function isYarnBerry(dir: string, packageManagers: unknown[]): Promise<boolean> {
+  for (const field of packageManagers) {
+    const major = typeof field === 'string' ? /^yarn@\^?(\d+)/.exec(field)?.[1] : undefined
+    if (major) return Number(major) >= 2
+  }
+  if (await findUp('.yarnrc.yml', dir)) return true
+  const lockfile = await findUp('yarn.lock', dir)
+  return lockfile !== undefined && (await readFile(lockfile, 'utf8')).includes('__metadata:')
+}
+
+/** Whether `<runner> run x` also runs `prex` and `postx`. */
+async function runsHooks(pm: PM, dir: string, packageManagers: unknown[]): Promise<boolean> {
+  switch (pm) {
+    case 'npm':
+    case 'pnpm':
+    case 'bun':
+      return true
+    case 'yarn':
+      return !(await isYarnBerry(dir, packageManagers))
+    case 'deno':
+      return false
+  }
+}
 
 const MANIFESTS = ['package.json', 'deno.json', 'deno.jsonc']
 
@@ -113,12 +148,25 @@ function descriptionsOf(pkg: any): Record<string, string> {
   return result
 }
 
-function packageScripts(pkg: any, allScripts: boolean): TaskDef[] {
+function hooksFor(name: string, scripts: Record<string, string>): Task['hooks'] {
+  const pre = scripts[`pre${name}`]
+  const post = scripts[`post${name}`]
+  if (pre === undefined && post === undefined) return undefined
+  return { ...(pre !== undefined && { pre }), ...(post !== undefined && { post }) }
+}
+
+function packageScripts(pkg: any, allScripts: boolean, withHooks: boolean): TaskDef[] {
   const scripts: Record<string, string> = pkg?.scripts ?? {}
   const descriptions = descriptionsOf(pkg ?? {})
   return Object.entries(scripts)
     .filter(([name]) => allScripts || !isHidden(name, scripts))
-    .map(([name, command]) => ({ name, command, description: descriptions[name], source: 'pkg' }))
+    .map(([name, command]) => ({
+      name,
+      command,
+      description: descriptions[name],
+      source: 'pkg',
+      hooks: withHooks ? hooksFor(name, scripts) : undefined,
+    }))
 }
 
 interface Manifests {
@@ -143,8 +191,8 @@ async function findWorkspaceRoot(dir: string): Promise<string | undefined> {
   return undefined
 }
 
-function tasksFrom(m: Manifests, pm: PM, allScripts: boolean): TaskDef[] {
-  const pkgTasks = packageScripts(m.pkg, allScripts)
+function tasksFrom(m: Manifests, pm: PM, allScripts: boolean, withHooks: boolean): TaskDef[] {
+  const pkgTasks = packageScripts(m.pkg, allScripts, withHooks)
   if (pm !== 'deno') return pkgTasks
   // `deno task` prefers deno.json over package.json on name collisions
   const fromDeno = denoTasks(m.deno)
@@ -160,11 +208,13 @@ export async function loadProject(cwd: string, opts: LoadOptions = {}): Promise<
   const pm = opts.pm ?? (await detectPM(dir, manifests.deno !== undefined))
   const allScripts = opts.allScripts ?? false
   const root = await findWorkspaceRoot(dir)
+  const rootManifests = root ? await readManifests(root) : undefined
+  const withHooks = await runsHooks(pm, dir, [manifests.pkg?.packageManager, rootManifests?.pkg?.packageManager])
 
-  const tasks: Task[] = tasksFrom(manifests, pm, allScripts)
+  const tasks: Task[] = tasksFrom(manifests, pm, allScripts, withHooks)
     .map((t) => ({ ...t, scope: 'local', cwd: dir }))
-  if (root) {
-    const rootTasks = tasksFrom(await readManifests(root), pm, allScripts)
+  if (root && rootManifests) {
+    const rootTasks = tasksFrom(rootManifests, pm, allScripts, withHooks)
     tasks.push(...rootTasks.map((t): Task => ({ ...t, scope: 'root', cwd: root })))
   }
 

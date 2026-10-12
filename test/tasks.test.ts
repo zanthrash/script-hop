@@ -203,6 +203,54 @@ describe('loadProject', () => {
     })
   })
 
+  describe('pre/post hooks', () => {
+    const withHooks = {
+      prebuild: 'rimraf dist',
+      build: 'tsc',
+      postbuild: 'echo done',
+      lint: 'eslint .',
+    }
+    const hooksOf = async (files: Record<string, unknown>, pm?: 'npm' | 'pnpm' | 'yarn' | 'bun' | 'deno') => {
+      const dir = await makeProject({ 'package.json': { scripts: withHooks }, ...files })
+      const tasks = (await loadProject(dir, { pm })).tasks
+      return Object.fromEntries(tasks.map((t) => [t.name, t.hooks]))
+    }
+
+    it('attaches hooks that npm will run', async () => {
+      expect(await hooksOf({ 'package-lock.json': '{}' })).toEqual({
+        build: { pre: 'rimraf dist', post: 'echo done' },
+        lint: undefined,
+      })
+    })
+
+    it('attaches hooks for pnpm, bun and Yarn 1', async () => {
+      expect((await hooksOf({ 'pnpm-lock.yaml': '' })).build).toEqual({ pre: 'rimraf dist', post: 'echo done' })
+      expect((await hooksOf({ 'bun.lock': '' })).build).toEqual({ pre: 'rimraf dist', post: 'echo done' })
+      expect((await hooksOf({ 'yarn.lock': '# yarn lockfile v1\n' })).build)
+        .toEqual({ pre: 'rimraf dist', post: 'echo done' })
+    })
+
+    it('omits hooks for deno', async () => {
+      expect((await hooksOf({}, 'deno')).build).toBeUndefined()
+    })
+
+    it('omits hooks for Yarn 2+', async () => {
+      expect((await hooksOf({ 'yarn.lock': '__metadata:\n  version: 8\n' })).build).toBeUndefined()
+      expect((await hooksOf({ 'yarn.lock': '', '.yarnrc.yml': 'nodeLinker: pnp\n' })).build).toBeUndefined()
+      const dir = await makeProject({
+        'package.json': { scripts: withHooks, packageManager: 'yarn@4.5.0' },
+      })
+      expect((await loadProject(dir)).tasks.find((t) => t.name === 'build')?.hooks).toBeUndefined()
+    })
+
+    it('includes only the hooks that exist', async () => {
+      const dir = await makeProject({ 'package.json': { scripts: { test: 'vitest', posttest: 'echo ok' } } })
+      expect((await loadProject(dir)).tasks.map((t) => [t.name, t.hooks])).toEqual([
+        ['test', { post: 'echo ok' }],
+      ])
+    })
+  })
+
   describe('package manager detection', () => {
     it.each([
       ['pnpm-lock.yaml', 'pnpm'],

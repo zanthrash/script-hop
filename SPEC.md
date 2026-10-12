@@ -91,7 +91,7 @@ Read, in order: `hop.descriptions`, `ntl.descriptions`, `scripts-info` (package.
 - Each row: name, source/workspace tag, highlighted fuzzy match characters.
 - Rendered on stderr so stdout stays clean. Ctrl-C or Esc cancels (exit 130).
 - Footer (inquirer `description`): description or command of the highlighted entry.
-- *Not yet built:* showing `pre`/`post` hooks that will run (e.g. `prebuild → build → postbuild`). Only npm, bun and Yarn 1 run them; pnpm and Yarn 2+ don't, so this needs the Yarn major version from detection.
+- When the runner will also run `pre`/`post` hooks, the footer shows the chain, e.g. `tsc  ·  runs prebuild → build → postbuild`. Verified against real runners: npm 11, pnpm 10, bun 1.3 and Yarn 1 run hooks; Yarn 2+ doesn't (detected from `packageManager`, `.yarnrc.yml`, or `__metadata` in `yarn.lock`). deno is treated as not running them (unverified).
 
 ## Ranking
 

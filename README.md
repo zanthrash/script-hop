@@ -87,6 +87,14 @@ When deno is the runner, tasks from `deno.json` / `deno.jsonc` are listed alongs
 
 Lifecycle scripts (`install`, `prepare`, `prepublishOnly`, …) and `pre`/`post` hooks with a matching script (`prebuild` next to `build`) are hidden. Use `--all-scripts` to show them.
 
+Hooks aren't forgotten, though. When your package manager will run them, the picker says so under the selected script:
+
+```
+tsc  ·  runs prebuild → build → postbuild
+```
+
+npm, pnpm, bun and Yarn 1 run hooks; Yarn 2+ doesn't, so no chain is shown there.
+
 ### Descriptions
 
 Add descriptions to show them in the picker instead of the raw command:
