@@ -1,5 +1,11 @@
 # script-hop
 
+## 0.3.0
+
+### Minor Changes
+
+- [`8dc8ab9`](https://github.com/zanthrash/script-hop/commit/8dc8ab9c6735258f6345d59e71b9eab6a6bdcf99) Thanks [@zanthrash](https://github.com/zanthrash)! - Add shell integration for fish and zsh. Add `hop --init fish | source` to your fish config or `eval "$(hop --init zsh)"` to `~/.zshrc`, and the scripts you pick run in your shell and land in its history as the real command (e.g. `pnpm run dev`), so ↑ and history search find them. Adding to fish history needs fish 4.0+; on fish 3.x scripts still run and hop explains once per session.
+
 ## 0.2.0
 
 ### Minor Changes
