@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { main, type IO } from '../src/app.ts'
@@ -265,5 +266,78 @@ describe('other flags', () => {
     expect(h.out()).toMatch(/Usage: hop/)
     expect(await main(['-v'], h.io)).toBe(0)
     expect(h.out()).toMatch(/\d+\.\d+\.\d+\n$/)
+  })
+})
+
+describe('shell integration handoff (HOP_CMD_FILE)', () => {
+  const cmdFile = async () => join(await makeProject({ 'cmd': '' }), 'cmd')
+
+  it('writes the command for the shell to run instead of running it', async () => {
+    const dir = await basic()
+    const file = await cmdFile()
+    const h = await harness(dir, { env: { HOP_CMD_FILE: file } })
+
+    expect(await main(['dev'], h.io)).toBe(0)
+    expect(h.runs).toEqual([])
+    expect(await readFile(file, 'utf8')).toBe('npm run dev\n')
+
+    // still counts as a run for ranking
+    const after = await harness(dir, { historyFile: h.io.historyFile })
+    await main(['--list'], after.io)
+    expect(after.out().split('\n')[0]).toBe('dev\tvite')
+  })
+
+  it('quotes extra arguments', async () => {
+    const file = await cmdFile()
+    const h = await harness(await basic(), { env: { HOP_CMD_FILE: file } })
+    await main(['test', '--', 'two words', '$HOME'], h.io)
+    expect(await readFile(file, 'utf8')).toBe(`npm run test -- 'two words' '$HOME'\n`)
+  })
+
+  it('points root scripts at the workspace root, relative to where you are', async () => {
+    const root = await makeProject({
+      'package.json': { workspaces: ['packages/*'], scripts: { lint: 'eslint .' } },
+      'pnpm-lock.yaml': '',
+      'packages/web/package.json': { scripts: { dev: 'vite' } },
+      'packages/web/src/.keep': '',
+    })
+    const file = await cmdFile()
+    const h = await harness(join(root, 'packages/web/src'), { env: { HOP_CMD_FILE: file } })
+    await main(['lint'], h.io)
+    expect(await readFile(file, 'utf8')).toBe('pnpm --dir ../../.. run lint\n')
+
+    await main(['dev'], h.io)
+    expect(await readFile(file, 'utf8')).toBe('pnpm run dev\n')
+  })
+
+  it('leaves the file empty when nothing is chosen', async () => {
+    const file = await cmdFile()
+    const h = await harness(await basic(), { env: { HOP_CMD_FILE: file }, pick: () => undefined })
+    expect(await main([], h.io)).toBe(130)
+    await main(['--list'], h.io)
+    expect(await readFile(file, 'utf8')).toBe('')
+    expect(h.out()).toContain('dev\tvite')
+  })
+})
+
+describe('hop --init', () => {
+  it.each([
+    ['fish', ['function hop', 'HOP_CMD_FILE', 'history append']],
+    ['zsh', ['hop() {', 'HOP_CMD_FILE', 'print -s']],
+  ])('prints the %s integration', async (shell, parts) => {
+    const h = await harness(await makeProject({}))
+    expect(await main(['--init', shell], h.io)).toBe(0)
+    for (const part of parts) expect(h.out()).toContain(part)
+  })
+
+  it('works outside a project', async () => {
+    const h = await harness(join(await makeProject({ 'x/.keep': '' }), 'x'))
+    expect(await main(['--init', 'zsh'], h.io)).toBe(0)
+  })
+
+  it('rejects unsupported shells', async () => {
+    const h = await harness(await makeProject({}))
+    expect(await main(['--init', 'tcsh'], h.io)).toBe(1)
+    expect(h.err()).toMatch(/Unsupported shell "tcsh".*fish, zsh/)
   })
 })

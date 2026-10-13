@@ -1,18 +1,11 @@
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import crossSpawn from 'cross-spawn'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { makeProject } from './helpers.ts'
 
 const repo = fileURLToPath(new URL('..', import.meta.url))
 const cli = join(repo, 'dist/cli.mjs')
-
-beforeAll(() => {
-  // cross-spawn resolves Windows .cmd shims like pnpm.cmd
-  const build = crossSpawn.sync('pnpm', ['build'], { cwd: repo, encoding: 'utf8' })
-  if (build.status !== 0) throw new Error(`build failed:\n${build.stdout}${build.stderr}`)
-}, 60_000)
 
 async function hop(cwd: string, args: string[], historyFile?: string) {
   const result = spawnSync(process.execPath, [cli, ...args], {

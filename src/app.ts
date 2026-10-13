@@ -1,8 +1,10 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
+import { relative } from 'node:path'
 import { parseArgs } from 'node:util'
-import { buildCommand, type Command } from './command.ts'
+import { buildCommand, toShell, type Command } from './command.ts'
 import { openHistory } from './history.ts'
 import { rank, type Ranked } from './rank.ts'
+import { isShell, SHELLS } from './shell.ts'
 import { loadProject, PMS, type PM, type Task } from './tasks.ts'
 
 /** Everything `main` touches outside its own logic, injected so it can be tested. */
@@ -37,6 +39,8 @@ Options:
       --pm <name>     use this package manager (${PMS.join(', ')}); also HOP_PM
       --all-scripts   include lifecycle and pre/post hook scripts
       --reset-history forget all usage history
+      --init <shell>  print shell integration (fish, zsh) so chosen scripts
+                      run in your shell and land in its history
   -h, --help          show this help
   -v, --version       show the version
 `
@@ -65,6 +69,7 @@ function parse(argv: string[], env: IO['env']) {
         pm: { type: 'string' },
         'all-scripts': { type: 'boolean' },
         'reset-history': { type: 'boolean' },
+        init: { type: 'string' },
         help: { type: 'boolean', short: 'h' },
         version: { type: 'boolean', short: 'v' },
       },
@@ -100,6 +105,13 @@ async function hop(argv: string[], io: IO): Promise<number> {
   }
   if (args.version) {
     io.stdout(`${await version()}\n`)
+    return 0
+  }
+  if (args.init !== undefined) {
+    if (!isShell(args.init)) {
+      throw new UsageError(`Unsupported shell "${args.init}". Supported: ${Object.keys(SHELLS).join(', ')}`)
+    }
+    io.stdout(SHELLS[args.init])
     return 0
   }
 
@@ -161,8 +173,20 @@ async function hop(argv: string[], io: IO): Promise<number> {
       // history is a convenience; never let it stop the script from running
       io.stderr(`hop: could not save history: ${(error as Error).message}\n`)
     }
+
+    const handoff = io.env.HOP_CMD_FILE
+    if (handoff) {
+      // Shell integration: the wrapper function runs the command in the user's shell and
+      // adds it to history, so it must work as typed from here. Local scripts are found
+      // by the runner walking up; root scripts need the directory spelled out.
+      const dir = task.scope === 'root' ? relative(io.cwd, task.cwd) || '.' : undefined
+      const line = toShell(buildCommand(project.pm, task.name, args.extraArgs, dir))
+      await writeFile(handoff, `${line}\n`)
+      return 0
+    }
+
     const command = buildCommand(project.pm, task.name, args.extraArgs)
-    io.stderr(`› ${[command.bin, ...command.args].join(' ')}\n`)
+    io.stderr(`› ${toShell(command)}\n`)
     return io.exec(command, task.cwd)
   }
 }

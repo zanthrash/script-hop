@@ -16,7 +16,6 @@ An interactive picker for package.json scripts, building on the idea of [`ntl`](
 
 - Multi-select / running several scripts.
 - Full-screen TUI or large preview pane.
-- Shell history integration (planned for v2 — see Future).
 - Listing every workspace package's scripts (reserved as `-a/--all`).
 - Config files.
 - Task sources beyond package.json and deno.json (Makefile, justfile, turbo…).
@@ -31,6 +30,7 @@ hop --list          print ranked scripts, one per line (for piping)
 hop --pm <name>     override detected package manager (npm|pnpm|yarn|bun|deno)
 hop --all-scripts   include hidden lifecycle/hook scripts
 hop --reset-history clear usage history
+hop --init <shell>  print shell integration (fish, zsh)
 hop -- <args>       append args to the chosen script
 hop --help / -v     help / version
 ```
@@ -124,6 +124,16 @@ Read, in order: `hop.descriptions`, `ntl.descriptions`, `scripts-info` (package.
 - Windows: `.cmd` shims handled by `cross-spawn`.
 - Manager binary missing → message suggesting `corepack enable` or `--pm`, exit 127.
 
+## Shell integration
+
+`hop --init fish|zsh` prints a `hop` wrapper function (a flag rather than `hop init`, so a script named `init` still runs with `hop init`).
+
+- The wrapper sets `HOP_CMD_FILE` to a temp file. When a script is chosen, hop records usage and writes the command line there instead of running it. The wrapper adds the line to history (fish `history append`, zsh `print -s`), prints `› <command>` to stderr and `eval`s it, so the script's exit code is the function's.
+- If nothing is written (`--list`, `--help`, cancel, errors), hop's own exit code is returned.
+- Lines are quoted with single quotes and `'\''`, which works in both fish and POSIX shells.
+- Root scripts carry their directory, relative to the current one, so history entries replay correctly: `npm --prefix`, `pnpm --dir`, `yarn --cwd`, `bun run --cwd`, `deno task --cwd` (all but deno checked by hand).
+- Tested in real fish and zsh (CI installs both on Linux).
+
 ## Edge cases
 
 | Situation | Behaviour |
@@ -163,7 +173,7 @@ src/
 
 ## Future (post-v1)
 
-- `hop init fish|zsh|bash|pwsh` shell integration so the real command lands in shell history.
+- Shell integration for bash and PowerShell.
 - `-a/--all`: every workspace package's scripts, run via `--filter` / `-w` / `workspace`.
 - Tab to edit the command / add args before running.
 - Multi-select, sequential or parallel runs.

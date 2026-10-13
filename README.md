@@ -36,6 +36,24 @@ hop test -- --watch # pass extra arguments to the script
 
 In the picker, type to filter, use ↑/↓ to move, Enter to run, and Esc or Ctrl-C to cancel.
 
+### Shell integration
+
+Normally your shell history records `hop`, not the script it ran. With shell integration, `hop` hands the command back to your shell, which runs it and saves the real command (`pnpm run dev`, `npm run test -- --watch`) to history, so ↑ and history search find it.
+
+**fish**: add to `~/.config/fish/config.fish`:
+
+```fish
+hop --init fish | source
+```
+
+**zsh**: add to `~/.zshrc`:
+
+```zsh
+eval "$(hop --init zsh)"
+```
+
+Workspace-root scripts are saved with their directory spelled out (e.g. `pnpm --dir ../.. run lint`), so rerunning them from history works from the same place.
+
 ### Options
 
 | Option | |
@@ -45,6 +63,7 @@ In the picker, type to filter, use ↑/↓ to move, Enter to run, and Esc or Ctr
 | `--pm <name>` | Use this package manager: `npm`, `pnpm`, `yarn`, `bun` or `deno` |
 | `--all-scripts` | Include lifecycle scripts and pre/post hooks |
 | `--reset-history` | Forget all usage history |
+| `--init <shell>` | Print shell integration for `fish` or `zsh` |
 | `-h`, `--help` | Show help |
 | `-v`, `--version` | Show the version |
 

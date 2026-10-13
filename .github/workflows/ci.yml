@@ -25,6 +25,9 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
+      - name: Install fish and zsh for shell integration tests
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y fish zsh
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test
