@@ -19,7 +19,15 @@ function hop --description 'Fuzzy-find and run package.json scripts'
     if test -z "$cmd"
         return $code
     end
-    builtin history append -- "$cmd" 2>/dev/null
+    # \`history append\` arrived in fish 4.0; older fish would treat it as a search. Writing
+    # the history file directly isn't safe (fish tracks its own file offsets), so older
+    # fish just runs the command and says once why it isn't in history.
+    if test (string split -f1 . -- $FISH_VERSION) -ge 4
+        builtin history append -- "$cmd"
+    else if not set -q __hop_history_warned
+        set -g __hop_history_warned 1
+        printf 'hop: fish %s cannot add commands to history; upgrade to fish 4.0+ for that\\n' $FISH_VERSION >&2
+    end
     printf '› %s\\n' "$cmd" >&2
     eval $cmd
 end

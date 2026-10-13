@@ -130,9 +130,10 @@ Read, in order: `hop.descriptions`, `ntl.descriptions`, `scripts-info` (package.
 
 - The wrapper sets `HOP_CMD_FILE` to a temp file. When a script is chosen, hop records usage and writes the command line there instead of running it. The wrapper adds the line to history (fish `history append`, zsh `print -s`), prints `› <command>` to stderr and `eval`s it, so the script's exit code is the function's.
 - If nothing is written (`--list`, `--help`, cancel, errors), hop's own exit code is returned.
+- fish needs 4.0+ for `history append`. On fish 3.x (`history append` would run a search instead) the command still runs, and a note is printed once per session. Writing fish's history file directly was tried and rejected: fish tracks its own file offsets, and an outside append corrupted the file.
 - Lines are quoted with single quotes and `'\''`, which works in both fish and POSIX shells.
-- Root scripts carry their directory, relative to the current one, so history entries replay correctly: `npm --prefix`, `pnpm --dir`, `yarn --cwd`, `bun run --cwd`, `deno task --cwd` (all but deno checked by hand).
-- Tested in real fish and zsh (CI installs both on Linux).
+- Root scripts carry their directory, relative to the current one and always with `/`, so history entries replay correctly: `npm --prefix`, `pnpm --dir`, `yarn --cwd`, `bun run --cwd`, `deno task --cwd` (all but deno checked by hand).
+- Tested in real fish and zsh. CI installs fish 3.x and zsh on Linux and fish 4.x on macOS, so both fish paths run.
 
 ## Edge cases
 

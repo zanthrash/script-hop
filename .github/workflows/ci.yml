@@ -25,9 +25,14 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
+      # Linux gets the distro's fish 3.x (no `history append`), macOS gets fish 4.x,
+      # so both shell-integration code paths are exercised
       - name: Install fish and zsh for shell integration tests
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y fish zsh
+      - name: Install fish for shell integration tests
+        if: runner.os == 'macOS'
+        run: brew install fish
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test

@@ -1,5 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises'
-import { relative } from 'node:path'
+import { relative, sep } from 'node:path'
 import { parseArgs } from 'node:util'
 import { buildCommand, toShell, type Command } from './command.ts'
 import { openHistory } from './history.ts'
@@ -179,7 +179,8 @@ async function hop(argv: string[], io: IO): Promise<number> {
       // Shell integration: the wrapper function runs the command in the user's shell and
       // adds it to history, so it must work as typed from here. Local scripts are found
       // by the runner walking up; root scripts need the directory spelled out.
-      const dir = task.scope === 'root' ? relative(io.cwd, task.cwd) || '.' : undefined
+      // forward slashes: the line is for fish/zsh, and runners accept them on Windows too
+      const dir = task.scope === 'root' ? relative(io.cwd, task.cwd).split(sep).join('/') || '.' : undefined
       const line = toShell(buildCommand(project.pm, task.name, args.extraArgs, dir))
       await writeFile(handoff, `${line}\n`)
       return 0

@@ -46,6 +46,8 @@ Normally your shell history records `hop`, not the script it ran. With shell int
 hop --init fish | source
 ```
 
+Adding to history needs fish 4.0 or later. On fish 3.x, scripts still run through your shell, and `hop` tells you once per session that history is skipped.
+
 **zsh**: add to `~/.zshrc`:
 
 ```zsh
