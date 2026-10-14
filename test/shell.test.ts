@@ -8,6 +8,8 @@ import { makeProject } from './helpers.ts'
 
 const cli = fileURLToPath(new URL('../dist/cli.mjs', import.meta.url))
 const has = (bin: string) => spawnSync(bin, ['--version']).status === 0
+// shell integration targets Unix shells; Windows runners have Git Bash, which isn't covered yet
+const available = (shell: string) => process.platform !== 'win32' && has(shell)
 
 /** fish only gained `history append` in 4.0; older fish runs the command without recording it. */
 const fishMajor = () =>
@@ -26,6 +28,7 @@ async function setup() {
     'package-lock.json': '{}',
     'bin/.keep': '',
     'home/.zshrc': 'HISTFILE=$HOME/.zsh_history\nHISTSIZE=1000\nSAVEHIST=1000\n',
+    'home/.bashrc': 'HISTFILE=$HOME/.bash_history\nHISTSIZE=1000\nHISTFILESIZE=2000\n',
   })
   await symlink(cli, join(dir, 'bin', 'hop'))
   const home = join(dir, 'home')
@@ -39,6 +42,7 @@ async function setup() {
     PATH: `${join(dir, 'bin')}${delimiter}${process.env.PATH}`,
     HOP_HISTORY: join(dir, 'hop-history.json'),
     HOP_PM: '',
+    BASH_SILENCE_DEPRECATION_WARNING: '1', // macOS /bin/bash nags about zsh
   }
   return { dir, home, env }
 }
@@ -83,6 +87,12 @@ const shells = {
     savedHistory: async (_env: NodeJS.ProcessEnv, home: string) =>
       (await readFile(join(home, '.zsh_history'), 'utf8')).trim().split('\n').reverse(),
   },
+  bash: {
+    run: (script: string) => ['bash', ['-i', '-c', `eval "$(hop --init bash)"\n${script}`]] as const,
+    status: '$?',
+    savedHistory: async (_env: NodeJS.ProcessEnv, home: string) =>
+      (await readFile(join(home, '.bash_history'), 'utf8')).trim().split('\n').reverse(),
+  },
 }
 
 describe.each(Object.entries(shells))('%s integration', (shell, s) => {
@@ -95,14 +105,14 @@ describe.each(Object.entries(shells))('%s integration', (shell, s) => {
   }
 
   // atuin replaces ↑ and Ctrl-R with its own history, which the shell's history doesn't feed
-  it.skipIf(!has(shell) || !has('atuin'))('records the command in atuin when atuin is active', async () => {
+  it.skipIf(!available(shell) || !has('atuin'))('records the command in atuin when atuin is active', async () => {
     // atuin's `history end` runs in the background, hence the sleep
     const { out } = await run(`hop hi\nsleep 1\natuin history list --cmd-only`, { atuin: true })
     expect(out).toContain('hello-from-script')
     expect(out.trim().split('\n').at(-1)?.trim()).toBe('npm run hi')
   })
 
-  it.skipIf(!has(shell) || !recordsHistory(shell))('runs the script in the shell and saves it to shell history', async () => {
+  it.skipIf(!available(shell) || !recordsHistory(shell))('runs the script in the shell and saves it to shell history', async () => {
     const { out, err, history } = await run(`hop hi\necho EXIT=${s.status}`)
     expect(out).toContain('hello-from-script')
     expect(out).toContain('EXIT=0')
@@ -111,7 +121,7 @@ describe.each(Object.entries(shells))('%s integration', (shell, s) => {
     expect((await history())[0]).toBe('npm run hi')
   })
 
-  it.skipIf(!has(shell) || recordsHistory(shell))('on fish < 4, runs the script and explains once why history is skipped', async () => {
+  it.skipIf(!available(shell) || recordsHistory(shell))('on fish < 4, runs the script and explains once why history is skipped', async () => {
     const { out, err } = await run(`hop hi\nhop hi\necho EXIT=${s.status}`)
     // npm also echoes the script's command, so count only its output lines
     expect(out.split('\n').filter((l) => l.trim() === 'hello-from-script')).toHaveLength(2)
@@ -119,12 +129,12 @@ describe.each(Object.entries(shells))('%s integration', (shell, s) => {
     expect(err.match(/cannot add commands to history/g)).toHaveLength(1)
   })
 
-  it.skipIf(!has(shell))("returns the script's exit code", async () => {
+  it.skipIf(!available(shell))("returns the script's exit code", async () => {
     const { out } = await run(`hop fail\necho EXIT=${s.status}`)
     expect(out).toContain('EXIT=3')
   })
 
-  it.skipIf(!has(shell))('passes quoted arguments through intact', async () => {
+  it.skipIf(!available(shell))('passes quoted arguments through intact', async () => {
     const { out, history } = await run(`hop args -- 'two words' '$HOME'`)
     expect(out).toContain('ARGS:["two words","$HOME"]')
     if (recordsHistory(shell)) {
@@ -132,7 +142,7 @@ describe.each(Object.entries(shells))('%s integration', (shell, s) => {
     }
   })
 
-  it.skipIf(!has(shell))('passes non-run output and exit codes straight through', async () => {
+  it.skipIf(!available(shell))('passes non-run output and exit codes straight through', async () => {
     const { out } = await run(`hop --list\nhop nope\necho EXIT=${s.status}`)
     expect(out).toContain('hi\techo hello-from-script')
     expect(out).toContain('EXIT=1')

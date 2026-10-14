@@ -39,7 +39,7 @@ Options:
       --pm <name>     use this package manager (${PMS.join(', ')}); also HOP_PM
       --all-scripts   include lifecycle and pre/post hook scripts
       --reset-history forget all usage history
-      --init <shell>  print shell integration (fish, zsh) so chosen scripts
+      --init <shell>  print shell integration (${Object.keys(SHELLS).join(', ')}) so chosen scripts
                       run in your shell and land in its history
   -h, --help          show this help
   -v, --version       show the version

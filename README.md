@@ -48,6 +48,14 @@ hop --init fish | source
 
 Adding to history needs fish 4.0 or later. On fish 3.x, scripts still run through your shell, and `hop` tells you once per session that history is skipped.
 
+**bash**: add to `~/.bashrc`:
+
+```bash
+eval "$(hop --init bash)"
+```
+
+In bash, the real command takes the place of the `hop` line in history. It works with bash 3.2 (macOS's built-in `/bin/bash`) and later.
+
 If you use [atuin](https://atuin.sh), the command is also recorded in atuin's history, so atuin's ↑ and Ctrl-R find it too.
 
 **zsh**: add to `~/.zshrc`:
@@ -67,7 +75,7 @@ Workspace-root scripts are saved with their directory spelled out (e.g. `pnpm --
 | `--pm <name>` | Use this package manager: `npm`, `pnpm`, `yarn`, `bun` or `deno` |
 | `--all-scripts` | Include lifecycle scripts and pre/post hooks |
 | `--reset-history` | Forget all usage history |
-| `--init <shell>` | Print shell integration for `fish` or `zsh` |
+| `--init <shell>` | Print shell integration for `fish`, `zsh` or `bash` |
 | `-h`, `--help` | Show help |
 | `-v`, `--version` | Show the version |
 

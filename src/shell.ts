@@ -72,7 +72,34 @@ hop() {
 }
 `
 
-export const SHELLS = { fish, zsh } as const
+// Works on bash 3.2 (still macOS's /bin/bash). `history -s` replaces the history entry of
+// the line being run (the typed `hop ...`) with the real command; checked on 3.2 and 5.2
+// that it never removes an unrelated entry, e.g. when that line was skipped by ignorespace.
+const bash = `# hop shell integration for bash
+# Load in ~/.bashrc with:  eval "$(hop --init bash)"
+hop() {
+  local cmd_file code cmd atuin_id
+  cmd_file=$(command mktemp -t hop.XXXXXX) || return 1
+  HOP_CMD_FILE=$cmd_file command hop "$@"
+  code=$?
+  cmd=$(<"$cmd_file")
+  command rm -f -- "$cmd_file"
+  [[ -z $cmd ]] && return $code
+  if [[ -n \${ATUIN_SESSION-} ]] && command -v atuin >/dev/null 2>&1; then
+    atuin_id=$(ATUIN_SHELL=bash command atuin history start -- "$cmd" 2>/dev/null)
+  fi
+  history -s -- "$cmd"
+  printf '› %s\\n' "$cmd" >&2
+  eval "$cmd"
+  code=$?
+  if [[ -n $atuin_id ]]; then
+    (command atuin history end --exit "$code" -- "$atuin_id" &) >/dev/null 2>&1
+  fi
+  return $code
+}
+`
+
+export const SHELLS = { fish, zsh, bash } as const
 export type Shell = keyof typeof SHELLS
 
 export function isShell(name: string): name is Shell {

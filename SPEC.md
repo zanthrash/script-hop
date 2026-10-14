@@ -30,7 +30,7 @@ hop --list          print ranked scripts, one per line (for piping)
 hop --pm <name>     override detected package manager (npm|pnpm|yarn|bun|deno)
 hop --all-scripts   include hidden lifecycle/hook scripts
 hop --reset-history clear usage history
-hop --init <shell>  print shell integration (fish, zsh)
+hop --init <shell>  print shell integration (fish, zsh, bash)
 hop -- <args>       append args to the chosen script
 hop --help / -v     help / version
 ```
@@ -126,15 +126,16 @@ Read, in order: `hop.descriptions`, `ntl.descriptions`, `scripts-info` (package.
 
 ## Shell integration
 
-`hop --init fish|zsh` prints a `hop` wrapper function (a flag rather than `hop init`, so a script named `init` still runs with `hop init`).
+`hop --init fish|zsh|bash` prints a `hop` wrapper function (a flag rather than `hop init`, so a script named `init` still runs with `hop init`).
 
-- The wrapper sets `HOP_CMD_FILE` to a temp file. When a script is chosen, hop records usage and writes the command line there instead of running it. The wrapper adds the line to history (fish `history append`, zsh `print -s`), prints `› <command>` to stderr and `eval`s it, so the script's exit code is the function's.
+- The wrapper sets `HOP_CMD_FILE` to a temp file. When a script is chosen, hop records usage and writes the command line there instead of running it. The wrapper adds the line to history (fish `history append`, zsh `print -s`, bash `history -s`), prints `› <command>` to stderr and `eval`s it, so the script's exit code is the function's.
 - If nothing is written (`--list`, `--help`, cancel, errors), hop's own exit code is returned.
 - fish needs 4.0+ for `history append`. On fish 3.x (`history append` would run a search instead) the command still runs, and a note is printed once per session. Writing fish's history file directly was tried and rejected: fish tracks its own file offsets, and an outside append corrupted the file.
 - atuin: it replaces ↑/Ctrl-R with its own database, fed only by its hooks for typed commands. When `ATUIN_SESSION` is set (and fish isn't in private mode), the wrapper records the command via `atuin history start` / `atuin history end --exit`, as atuin's hooks do. This also covers fish 3.x users who have atuin.
+- bash: `history -s` replaces the entry for the line being run (the typed `hop …`) with the real command. Checked on bash 3.2 and 5.2 that it never removes an unrelated entry (e.g. when the `hop` line was skipped by `ignorespace`). The wrapper sticks to bash 3.2 syntax, since that is still macOS's `/bin/bash`.
 - Lines are quoted with single quotes and `'\''`, which works in both fish and POSIX shells.
 - Root scripts carry their directory, relative to the current one and always with `/`, so history entries replay correctly: `npm --prefix`, `pnpm --dir`, `yarn --cwd`, `bun run --cwd`, `deno task --cwd` (all but deno checked by hand).
-- Tested in real fish and zsh. CI installs fish 3.x and zsh on Linux and fish 4.x on macOS, so both fish paths run.
+- Tested in real fish, zsh and bash. CI installs fish 3.x and zsh on Linux and fish 4.x on macOS, so both fish paths run; bash is 5.x on Linux and 3.2 on macOS. Shell tests are skipped on Windows (Git Bash isn't covered yet).
 
 ## Edge cases
 
@@ -175,7 +176,7 @@ src/
 
 ## Future (post-v1)
 
-- Shell integration for bash and PowerShell.
+- Shell integration for PowerShell and Git Bash on Windows.
 - `-a/--all`: every workspace package's scripts, run via `--filter` / `-w` / `workspace`.
 - Tab to edit the command / add args before running.
 - Multi-select, sequential or parallel runs.

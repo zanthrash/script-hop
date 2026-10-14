@@ -324,6 +324,7 @@ describe('hop --init', () => {
   it.each([
     ['fish', ['function hop', 'HOP_CMD_FILE', 'history append']],
     ['zsh', ['hop() {', 'HOP_CMD_FILE', 'print -s']],
+    ['bash', ['hop() {', 'HOP_CMD_FILE', 'history -s']],
   ])('prints the %s integration', async (shell, parts) => {
     const h = await harness(await makeProject({}))
     expect(await main(['--init', shell], h.io)).toBe(0)
@@ -338,6 +339,6 @@ describe('hop --init', () => {
   it('rejects unsupported shells', async () => {
     const h = await harness(await makeProject({}))
     expect(await main(['--init', 'tcsh'], h.io)).toBe(1)
-    expect(h.err()).toMatch(/Unsupported shell "tcsh".*fish, zsh/)
+    expect(h.err()).toMatch(/Unsupported shell "tcsh".*fish, zsh, bash/)
   })
 })
