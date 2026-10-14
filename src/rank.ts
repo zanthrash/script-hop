@@ -1,6 +1,13 @@
+import * as fzf from 'fzf'
 import { Fzf, type FzfResultItem } from 'fzf'
 import { frecency, type Usage } from './history.ts'
 import type { Task } from './tasks.ts'
+
+// fzf's typings re-export its matchers with `export *`, which TypeScript doesn't pick up
+// for this package; the runtime export is there.
+const { extendedMatch } = fzf as unknown as {
+  extendedMatch: <U>(this: unknown, query: string) => FzfResultItem<U>[]
+}
 
 export type { Usage }
 
@@ -39,10 +46,15 @@ export function rank(tasks: Task[], usage: Usage, query: string, now: number): R
       .map((task) => ({ task, positions: [] }))
   }
 
-  const byName: FzfResultItem<Task>[] = new Fzf(tasks, { selector: (t: Task) => t.name }).find(query)
+  // workspace package names are searchable too ("api test"); terms separated by spaces
+  // must all match, as in fzf's extended mode
+  const byName: FzfResultItem<Task>[] = new Fzf(tasks, {
+    selector: (t: Task) => (t.package ? `${t.name} ${t.package}` : t.name),
+    match: extendedMatch,
+  }).find(query)
   const nameMatched = new Set(byName.map((m) => m.item))
   const commandOnly = tasks.filter((t) => !nameMatched.has(t))
-  const byCommand: FzfResultItem<Task>[] = new Fzf(commandOnly, { selector: (t: Task) => t.command })
+  const byCommand: FzfResultItem<Task>[] = new Fzf(commandOnly, { selector: (t: Task) => t.command, match: extendedMatch })
     .find(query)
 
   const order = (a: FzfResultItem<Task>, b: FzfResultItem<Task>) =>
@@ -52,7 +64,11 @@ export function rank(tasks: Task[], usage: Usage, query: string, now: number): R
     a.item.name.localeCompare(b.item.name)
 
   return [
-    ...byName.sort(order).map((m) => ({ task: m.item, positions: [...m.positions].sort((x, y) => x - y) })),
+    ...byName.sort(order).map((m) => ({
+      task: m.item,
+      // only highlight within the script name, not the package name after it
+      positions: [...m.positions].filter((p) => p < m.item.name.length).sort((x, y) => x - y),
+    })),
     ...byCommand.sort(order).map((m) => ({ task: m.item, positions: [] })),
   ]
 }

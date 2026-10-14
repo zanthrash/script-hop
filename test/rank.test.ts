@@ -87,3 +87,20 @@ describe('rank with a query', () => {
     ])
   })
 })
+
+describe('rank with workspace packages', () => {
+  const pkgTask = (name: string, pkg: string, command = `echo ${name}`): Task =>
+    ({ name, command, cwd: `/repo/packages/${pkg}`, source: 'pkg', scope: 'package', package: pkg })
+
+  it('matches on the package name, highlighting only within the script name', () => {
+    const list = [pkgTask('dev', 'web'), pkgTask('test', 'api'), pkgTask('dev', 'api'), task('lint')]
+    const result = rank(list, {}, 'api', now)
+    expect(result.map((r) => [r.task.name, r.task.package])).toEqual([['dev', 'api'], ['test', 'api']])
+    for (const r of result) expect(r.positions.every((p) => p < r.task.name.length)).toBe(true)
+  })
+
+  it('narrows by package and script together', () => {
+    const list = [pkgTask('test', 'web'), pkgTask('test', 'api'), pkgTask('dev', 'api')]
+    expect(rank(list, {}, 'api test', now).map((r) => [r.task.name, r.task.package])).toEqual([['test', 'api']])
+  })
+})

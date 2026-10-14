@@ -31,6 +31,7 @@ hop                 # open the picker
 hop dev             # run "dev" straight away
 hop bld             # no script called "bld": open the picker filtered to "bld"
 hop -l              # rerun the last script you ran in this project
+hop -a              # include every workspace package's scripts (monorepos)
 hop test -- --watch # pass extra arguments to the script
 ```
 
@@ -71,7 +72,8 @@ Workspace-root scripts are saved with their directory spelled out (e.g. `pnpm --
 | Option | |
 |---|---|
 | `-l`, `--last` | Rerun the last script run in this project |
-| `--list` | Print scripts in ranked order (`name<TAB>command`) and exit |
+| `-a`, `--all` | Include the scripts of every workspace package |
+| `--list` | Print scripts in ranked order (`name<TAB>command`, plus `<TAB>root` or `<TAB>package` for scripts outside the current package) and exit |
 | `--pm <name>` | Use this package manager: `npm`, `pnpm`, `yarn`, `bun` or `deno` |
 | `--all-scripts` | Include lifecycle scripts and pre/post hooks |
 | `--reset-history` | Forget all usage history |
@@ -109,6 +111,8 @@ Chosen in this order:
 ### Monorepos
 
 Inside a workspace package, you see that package's scripts plus the workspace root's scripts, labelled `(root)`. Root scripts run from the root. Workspaces are recognised from `pnpm-workspace.yaml`, a `workspaces` field in package.json, or a deno `workspace`.
+
+With `-a` / `--all`, every package in the workspace is included, labelled with its name, e.g. `test (api)`. Each script runs in its own package's directory. Package names are searchable, so typing `api test` finds `test (api)`. `hop -a migrate` runs `migrate` straight away if only one package has it; if several do, the picker opens so you can choose (the current package and root still win when they have it).
 
 ### Deno
 

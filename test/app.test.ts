@@ -342,3 +342,66 @@ describe('hop --init', () => {
     expect(h.err()).toMatch(/Unsupported shell "tcsh".*fish, zsh, bash/)
   })
 })
+
+describe('hop --all', () => {
+  const workspace = () => makeProject({
+    'package.json': { scripts: { lint: 'eslint .' } },
+    'pnpm-workspace.yaml': 'packages:\n  - packages/*\n',
+    'pnpm-lock.yaml': '',
+    'packages/web/package.json': { name: 'web', scripts: { dev: 'vite', test: 'vitest' } },
+    'packages/api/package.json': { name: 'api', scripts: { dev: 'tsx watch', test: 'vitest', migrate: 'prisma migrate' } },
+    'packages/docs/package.json': { name: 'docs', scripts: { serve: 'vitepress' } },
+  })
+
+  it('lists other packages with a third column naming where each script lives', async () => {
+    const root = await workspace()
+    const h = await harness(join(root, 'packages/web'))
+    await main(['--all', '--list'], h.io)
+    expect(h.out().split('\n').filter(Boolean).sort()).toEqual([
+      'dev\ttsx watch\tapi',
+      'dev\tvite',
+      'lint\teslint .\troot',
+      'migrate\tprisma migrate\tapi',
+      'serve\tvitepress\tdocs',
+      'test\tvitest',
+      'test\tvitest\tapi',
+    ].sort())
+  })
+
+  it('runs a script found in exactly one other package, in that package', async () => {
+    const root = await workspace()
+    const h = await harness(join(root, 'packages/web'))
+    await main(['-a', 'migrate'], h.io)
+    expect(h.runs).toEqual([{ command: { bin: 'pnpm', args: ['run', 'migrate'] }, cwd: join(root, 'packages/api') }])
+  })
+
+  it('prefers the current package when the name is everywhere', async () => {
+    const root = await workspace()
+    const h = await harness(join(root, 'packages/web'))
+    await main(['--all', 'test'], h.io)
+    expect(h.runs[0]?.cwd).toBe(join(root, 'packages/web'))
+  })
+
+  it('opens the picker when several other packages share the name', async () => {
+    const root = await workspace()
+    const h = await harness(root, { pick: (choices) => choices.find((c) => c.task.package === 'api')?.task })
+    await main(['--all', 'dev'], h.io)
+    expect(h.picks[0]?.query).toBe('dev')
+    expect(h.runs[0]?.cwd).toBe(join(root, 'packages/api'))
+  })
+
+  it('without a terminal, fails on an ambiguous name and says where it is', async () => {
+    const root = await workspace()
+    const h = await harness(root, { tty: false })
+    expect(await main(['--all', 'dev'], h.io)).toBe(1)
+    expect(h.err()).toMatch(/"dev" is in several packages: api, web/)
+  })
+
+  it('hands the shell a command that runs in the package directory', async () => {
+    const root = await workspace()
+    const file = join(await makeProject({ cmd: '' }), 'cmd')
+    const h = await harness(join(root, 'packages/web'), { env: { HOP_CMD_FILE: file } })
+    await main(['--all', 'migrate'], h.io)
+    expect(await readFile(file, 'utf8')).toBe('pnpm --dir ../api run migrate\n')
+  })
+})

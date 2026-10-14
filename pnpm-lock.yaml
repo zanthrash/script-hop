@@ -26,6 +26,12 @@ importers:
       package-manager-detector:
         specifier: ^1.9.0
         version: 1.9.0
+      tinyglobby:
+        specifier: ^0.2.17
+        version: 0.2.17
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
     devDependencies:
       '@changesets/changelog-github':
         specifier: ^1.0.1

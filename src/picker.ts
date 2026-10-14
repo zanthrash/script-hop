@@ -11,7 +11,7 @@ function highlight(name: string, positions: number[]): string {
 }
 
 function label({ task, positions }: Ranked): string {
-  const tags = [task.scope === 'root' && 'root', task.source === 'deno' && 'deno'].filter(Boolean)
+  const tags = [task.scope === 'root' && 'root', task.package, task.source === 'deno' && 'deno'].filter(Boolean)
   const suffix = tags.length > 0 ? styleText('dim', ` (${tags.join(', ')})`) : ''
   return highlight(task.name, positions) + suffix
 }

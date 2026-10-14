@@ -16,7 +16,6 @@ An interactive picker for package.json scripts, building on the idea of [`ntl`](
 
 - Multi-select / running several scripts.
 - Full-screen TUI or large preview pane.
-- Listing every workspace package's scripts (reserved as `-a/--all`).
 - Config files.
 - Task sources beyond package.json and deno.json (Makefile, justfile, turbo…).
 
@@ -26,6 +25,7 @@ An interactive picker for package.json scripts, building on the idea of [`ntl`](
 hop                 open the picker
 hop <query>         exact script name match → run immediately; otherwise open picker pre-filtered
 hop -l, --last      rerun the last script in this project, no picker
+hop -a, --all       include the scripts of every workspace package
 hop --list          print ranked scripts, one per line (for piping)
 hop --pm <name>     override detected package manager (npm|pnpm|yarn|bun|deno)
 hop --all-scripts   include hidden lifecycle/hook scripts
@@ -73,6 +73,14 @@ Each entry carries a source tag (`pkg` / `deno`).
 ### Monorepos
 
 List scripts from the **nearest package.json** plus the **workspace root's** scripts, grouped and tagged `root`. Root scripts run with cwd set to the workspace root. Workspace root detection: `pnpm-workspace.yaml`, or a `workspaces` field in package.json (npm/yarn/bun), or deno workspace config.
+
+### All workspace packages (`-a`, `--all`)
+
+- Packages come from the workspace root's `pnpm-workspace.yaml` `packages`, package.json `workspaces` (array or yarn's `{ packages }`), or deno.json `workspace`. Patterns are expanded with `tinyglobby`; `!` exclusions are honoured, `node_modules` is skipped, and only directories with a package.json or deno.json count.
+- Tasks get `scope: 'package'` and a `package` label (package name, else path from the root), and run in their package directory. Works from the root too.
+- Search matches `"<name> <package>"` with fzf extended matching (space-separated terms must all match); highlighting stays within the script name.
+- Exact names: current package, then root, then a unique other package; several packages → picker (non-TTY: error naming them).
+- Shell handoff reuses the per-runner directory flags (`pnpm --dir ../api run migrate`) rather than workspace flags (`--filter`, `-w`, `yarn workspace`), whose package selection differs between runners. Checked against real npm, pnpm, Yarn 1 and bun workspaces.
 
 ### Hidden scripts
 
@@ -177,7 +185,6 @@ src/
 ## Future (post-v1)
 
 - Shell integration for PowerShell and Git Bash on Windows.
-- `-a/--all`: every workspace package's scripts, run via `--filter` / `-w` / `workspace`.
 - Tab to edit the command / add args before running.
 - Multi-select, sequential or parallel runs.
 - Additional task sources (Makefile, justfile, turbo.json).

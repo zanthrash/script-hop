@@ -35,6 +35,7 @@ Pick a package.json script with fuzzy search; most-used scripts come first.
 
 Options:
   -l, --last          rerun the last script run in this project
+  -a, --all           include the scripts of every workspace package
       --list          print scripts in ranked order and exit
       --pm <name>     use this package manager (${PMS.join(', ')}); also HOP_PM
       --all-scripts   include lifecycle and pre/post hook scripts
@@ -68,6 +69,7 @@ function parse(argv: string[], env: IO['env']) {
         list: { type: 'boolean' },
         pm: { type: 'string' },
         'all-scripts': { type: 'boolean' },
+        all: { type: 'boolean', short: 'a' },
         'reset-history': { type: 'boolean' },
         init: { type: 'string' },
         help: { type: 'boolean', short: 'h' },
@@ -124,7 +126,7 @@ async function hop(argv: string[], io: IO): Promise<number> {
     return 0
   }
 
-  const project = await loadProject(io.cwd, { pm: args.pm, allScripts: args['all-scripts'] })
+  const project = await loadProject(io.cwd, { pm: args.pm, allScripts: args['all-scripts'], all: args.all })
   if (project.tasks.length === 0) {
     io.stderr(`No scripts in ${project.dir}\n`)
     return 0
@@ -133,7 +135,11 @@ async function hop(argv: string[], io: IO): Promise<number> {
   const search = (q: string) => rank(project.tasks, history.usage(), q, io.now())
 
   if (args.list || (!io.isTTY && args.query === '')) {
-    for (const { task } of search('')) io.stdout(`${task.name}\t${task.command}\n`)
+    for (const { task } of search('')) {
+      // a third column says where scripts outside the current package live
+      const where = task.scope === 'root' ? 'root' : task.package
+      io.stdout(`${task.name}\t${task.command}${where ? `\t${where}` : ''}\n`)
+    }
     return 0
   }
 
@@ -143,12 +149,20 @@ async function hop(argv: string[], io: IO): Promise<number> {
     io.stderr('No previous run here\n')
   }
 
-  // tasks are ordered local-first, so an exact local name wins over a root one
-  const exact = args.query ? project.tasks.find((t) => t.name === args.query) : undefined
+  // An exact name runs straight away: the current package's script first, then the root's,
+  // then (with --all) another package's if only one has it. Otherwise the picker decides.
+  const named = args.query ? project.tasks.filter((t) => t.name === args.query) : []
+  const exact = named.find((t) => t.scope === 'local') ?? named.find((t) => t.scope === 'root') ??
+    (named.length === 1 ? named[0] : undefined)
   if (exact) return run(exact)
 
   if (!io.isTTY) {
-    io.stderr(`No script named "${args.query}"\n`)
+    if (named.length > 1) {
+      const where = named.map((t) => t.package).sort().join(', ')
+      io.stderr(`"${args.query}" is in several packages: ${where}. Run it from that package, or in a terminal to pick.\n`)
+    } else {
+      io.stderr(`No script named "${args.query}"\n`)
+    }
     return 1
   }
 
@@ -178,9 +192,9 @@ async function hop(argv: string[], io: IO): Promise<number> {
     if (handoff) {
       // Shell integration: the wrapper function runs the command in the user's shell and
       // adds it to history, so it must work as typed from here. Local scripts are found
-      // by the runner walking up; root scripts need the directory spelled out.
+      // by the runner walking up; root and other packages' scripts need the directory.
       // forward slashes: the line is for fish/zsh, and runners accept them on Windows too
-      const dir = task.scope === 'root' ? relative(io.cwd, task.cwd).split(sep).join('/') || '.' : undefined
+      const dir = task.scope !== 'local' ? relative(io.cwd, task.cwd).split(sep).join('/') || '.' : undefined
       const line = toShell(buildCommand(project.pm, task.name, args.extraArgs, dir))
       await writeFile(handoff, `${line}\n`)
       return 0

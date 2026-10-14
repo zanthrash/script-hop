@@ -1,7 +1,9 @@
 import { access, readFile } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 import { parse as parseJsonc } from 'jsonc-parser'
 import { detect } from 'package-manager-detector/detect'
+import { glob } from 'tinyglobby'
+import { parse as parseYaml } from 'yaml'
 
 export const PMS = ['npm', 'pnpm', 'yarn', 'bun', 'deno'] as const
 export type PM = (typeof PMS)[number]
@@ -15,8 +17,13 @@ export interface Task {
   description?: string
   /** Which file the task is defined in. */
   source: 'pkg' | 'deno'
-  /** `root` tasks come from the workspace root rather than the nearest package. */
-  scope: 'local' | 'root'
+  /**
+   * Where the task comes from: the nearest package (`local`), the workspace root (`root`),
+   * or, with `--all`, another workspace package (`package`).
+   */
+  scope: 'local' | 'root' | 'package'
+  /** For `package` tasks: the package's name, or its path from the workspace root. */
+  package?: string
   /** Directory to run the task in. */
   cwd: string
   /** `pre<name>` / `post<name>` scripts the runner will run around this one, if any. */
@@ -37,6 +44,8 @@ export interface LoadOptions {
   pm?: PM
   /** Include lifecycle scripts and pre/post hooks. */
   allScripts?: boolean
+  /** Include the scripts of every workspace package. */
+  all?: boolean
 }
 
 // npm lifecycle scripts that run implicitly and are rarely invoked by hand
@@ -182,6 +191,43 @@ function isWorkspaceRoot(m: Manifests, hasPnpmWorkspace: boolean): boolean {
   return hasPnpmWorkspace || m.pkg?.workspaces !== undefined || m.deno?.workspace !== undefined
 }
 
+/** Package directory patterns declared by a workspace root, in its own config. */
+async function workspacePatterns(root: string, m: Manifests): Promise<string[]> {
+  const patterns: unknown[] = []
+  const pnpmFile = join(root, 'pnpm-workspace.yaml')
+  if (await exists(pnpmFile)) {
+    const config = parseYaml(await readFile(pnpmFile, 'utf8'))
+    patterns.push(...(Array.isArray(config?.packages) ? config.packages : []))
+  }
+  const npmStyle = m.pkg?.workspaces // npm, yarn and bun: an array, or yarn's { packages: [...] }
+  patterns.push(...(Array.isArray(npmStyle) ? npmStyle : Array.isArray(npmStyle?.packages) ? npmStyle.packages : []))
+  if (Array.isArray(m.deno?.workspace)) patterns.push(...m.deno.workspace)
+  return patterns.filter((p): p is string => typeof p === 'string')
+}
+
+/** Directories of the workspace's packages, sorted, excluding the root itself. */
+async function workspacePackages(root: string, m: Manifests): Promise<string[]> {
+  const patterns = await workspacePatterns(root, m)
+  if (patterns.length === 0) return []
+  const dirs = await glob(patterns, {
+    cwd: root,
+    onlyDirectories: true,
+    absolute: true,
+    ignore: ['**/node_modules/**'],
+  })
+  const packages: string[] = []
+  for (const d of dirs.map((d) => resolve(d)).sort()) {
+    if (d !== root && (await Promise.all(MANIFESTS.map((f) => exists(join(d, f))))).some(Boolean)) {
+      packages.push(d)
+    }
+  }
+  return packages
+}
+
+async function isWorkspaceDir(dir: string, m: Manifests): Promise<boolean> {
+  return isWorkspaceRoot(m, await exists(join(dir, 'pnpm-workspace.yaml')))
+}
+
 /** Nearest workspace root strictly above `dir`. */
 async function findWorkspaceRoot(dir: string): Promise<string | undefined> {
   for (let d = dirname(dir); dirname(d) !== d; d = dirname(d)) {
@@ -216,6 +262,21 @@ export async function loadProject(cwd: string, opts: LoadOptions = {}): Promise<
   if (root && rootManifests) {
     const rootTasks = tasksFrom(rootManifests, pm, allScripts, withHooks)
     tasks.push(...rootTasks.map((t): Task => ({ ...t, scope: 'root', cwd: root })))
+  }
+
+  if (opts.all) {
+    // from inside a package the workspace root is above; at the root it is `dir` itself
+    const workspace = root ?? ((await isWorkspaceDir(dir, manifests)) ? dir : undefined)
+    const workspaceManifests = root ? rootManifests : manifests
+    if (workspace && workspaceManifests) {
+      for (const pkgDir of await workspacePackages(workspace, workspaceManifests)) {
+        if (pkgDir === dir) continue
+        const m = await readManifests(pkgDir)
+        const label = m.pkg?.name ?? m.deno?.name ?? relative(workspace, pkgDir)
+        tasks.push(...tasksFrom(m, pm, allScripts, withHooks)
+          .map((t): Task => ({ ...t, scope: 'package', package: label, cwd: pkgDir })))
+      }
+    }
   }
 
   return { pm, dir, root, tasks }

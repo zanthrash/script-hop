@@ -203,6 +203,91 @@ describe('loadProject', () => {
     })
   })
 
+  describe('all workspace packages (--all)', () => {
+    const summary = async (cwd: string, opts = { all: true }) =>
+      (await loadProject(cwd, opts)).tasks.map((t) => [t.name, t.scope, t.package, t.cwd])
+
+    it('adds every other workspace package, labelled with its name', async () => {
+      const root = await makeProject({
+        'package.json': { scripts: { lint: 'eslint .' } },
+        'pnpm-workspace.yaml': 'packages:\n  - packages/*\n',
+        'pnpm-lock.yaml': '',
+        'packages/web/package.json': { name: '@acme/web', scripts: { dev: 'vite' } },
+        'packages/api/package.json': { name: '@acme/api', scripts: { dev: 'tsx watch', test: 'vitest' } },
+      })
+      const web = join(root, 'packages/web')
+      const api = join(root, 'packages/api')
+      expect(await summary(web)).toEqual([
+        ['dev', 'local', undefined, web],
+        ['lint', 'root', undefined, root],
+        ['dev', 'package', '@acme/api', api],
+        ['test', 'package', '@acme/api', api],
+      ])
+    })
+
+    it('works from the workspace root itself', async () => {
+      const root = await makeProject({
+        'package.json': { workspaces: ['apps/*'], scripts: { lint: 'eslint .' } },
+        'package-lock.json': '{}',
+        'apps/a/package.json': { name: 'a', scripts: { start: 'node .' } },
+        'apps/b/package.json': { name: 'b', scripts: { start: 'node .' } },
+      })
+      expect(await summary(root)).toEqual([
+        ['lint', 'local', undefined, root],
+        ['start', 'package', 'a', join(root, 'apps/a')],
+        ['start', 'package', 'b', join(root, 'apps/b')],
+      ])
+    })
+
+    it("reads yarn's { packages } form and labels unnamed packages by path", async () => {
+      const root = await makeProject({
+        'package.json': { workspaces: { packages: ['libs/**'] } },
+        'yarn.lock': '',
+        'libs/x/y/package.json': { scripts: { build: 'tsc' } },
+      })
+      expect(await summary(root)).toEqual([['build', 'package', 'libs/x/y', join(root, 'libs/x/y')]])
+    })
+
+    it('honours exclusions and skips node_modules and dirs without a manifest', async () => {
+      const root = await makeProject({
+        'package.json': { private: true },
+        'pnpm-workspace.yaml': "packages:\n  - 'packages/**'\n  - '!packages/legacy'\n",
+        'packages/app/package.json': { name: 'app', scripts: { dev: 'vite' } },
+        'packages/app/node_modules/dep/package.json': { name: 'dep', scripts: { x: 'no' } },
+        'packages/legacy/package.json': { name: 'legacy', scripts: { dev: 'old' } },
+        'packages/docs/README.md': '# no manifest',
+      })
+      expect(await summary(root)).toEqual([['dev', 'package', 'app', join(root, 'packages/app')]])
+    })
+
+    it('reads deno workspace members when deno is the runner', async () => {
+      const root = await makeProject({
+        'deno.json': { workspace: ['./core', './cli'], tasks: { check: 'deno check' } },
+        'deno.lock': '{}',
+        'core/deno.json': { name: '@acme/core', tasks: { test: 'deno test' } },
+        'cli/deno.json': { name: '@acme/cli', tasks: { run: 'deno run main.ts' } },
+      })
+      expect(await summary(root)).toEqual([
+        ['check', 'local', undefined, root],
+        ['run', 'package', '@acme/cli', join(root, 'cli')],
+        ['test', 'package', '@acme/core', join(root, 'core')],
+      ])
+    })
+
+    it('changes nothing outside a workspace', async () => {
+      const dir = await makeProject({ 'package.json': { scripts } })
+      expect(await summary(dir)).toEqual(await summary(dir, { all: false }))
+    })
+
+    it('is off by default', async () => {
+      const root = await makeProject({
+        'package.json': { workspaces: ['apps/*'], scripts: { lint: 'eslint .' } },
+        'apps/a/package.json': { name: 'a', scripts: { start: 'node .' } },
+      })
+      expect((await loadProject(root)).tasks.map((t) => t.name)).toEqual(['lint'])
+    })
+  })
+
   describe('pre/post hooks', () => {
     const withHooks = {
       prebuild: 'rimraf dist',
