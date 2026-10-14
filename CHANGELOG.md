@@ -1,5 +1,11 @@
 # script-hop
 
+## 0.3.1
+
+### Patch Changes
+
+- [`70c5637`](https://github.com/zanthrash/script-hop/commit/70c5637e3ff997d3c492a8d51f59e7b269172042) Thanks [@zanthrash](https://github.com/zanthrash)! - Shell integration now records the command in [atuin](https://atuin.sh) when an atuin session is active. Previously atuin's ↑ and Ctrl-R only saw `hop`, because atuin keeps its own history and only records typed commands.
+
 ## 0.3.0
 
 ### Minor Changes
