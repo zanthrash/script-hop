@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { symlink } from 'node:fs/promises'
+import { mkdir, symlink, writeFile } from 'node:fs/promises'
 import { delimiter, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -33,6 +33,25 @@ async function setup() {
   return { dir, env }
 }
 
+/** Point atuin at a throwaway database (no daemon, no sync) and start a session. */
+async function isolatedAtuin(dir: string) {
+  const cfg = join(dir, 'atuin-config')
+  const data = join(dir, 'atuin-data')
+  await mkdir(cfg, { recursive: true })
+  await mkdir(data, { recursive: true })
+  await writeFile(join(cfg, 'config.toml'), [
+    `db_path = "${join(data, 'history.db')}"`,
+    `record_store_path = "${join(data, 'records.db')}"`,
+    `key_path = "${join(data, 'key')}"`,
+    'auto_sync = false',
+    'update_check = false',
+    '[daemon]',
+    'enabled = false',
+  ].join('\n'))
+  const session = spawnSync('atuin', ['uuid'], { encoding: 'utf8' }).stdout.trim()
+  return { ATUIN_CONFIG_DIR: cfg, ATUIN_SESSION: session }
+}
+
 const shells = {
   fish: {
     // --no-config: ignore the user's config; history append works in -c mode
@@ -48,12 +67,23 @@ const shells = {
 }
 
 describe.each(Object.entries(shells))('%s integration', (shell, s) => {
-  const run = async (script: string) => {
+  const run = async (script: string, opts: { atuin?: boolean } = {}) => {
     const { dir, env } = await setup()
+    const atuinEnv = opts.atuin ? await isolatedAtuin(dir) : {}
     const [bin, args] = s.run(script)
-    const result = spawnSync(bin, args, { cwd: dir, env, encoding: 'utf8' })
+    const result = spawnSync(bin, args, { cwd: dir, env: { ...env, ...atuinEnv }, encoding: 'utf8' })
     return { out: result.stdout, err: result.stderr }
   }
+
+  // atuin replaces ↑ and Ctrl-R with its own history, which the shell's history doesn't feed
+  it.skipIf(!has(shell) || !has('atuin'))('records the command in atuin when atuin is active', async () => {
+    // fish --no-config implies private mode, where atuin (and hop) record nothing; a real
+    // session isn't private. atuin's `history end` runs in the background, hence the sleep.
+    const unprivate = shell === 'fish' ? 'set -e fish_private_mode\n' : ''
+    const { out } = await run(`${unprivate}hop hi\nsleep 1\natuin history list --cmd-only`, { atuin: true })
+    expect(out).toContain('hello-from-script')
+    expect(out.trim().split('\n').at(-1)?.trim()).toBe('npm run hi')
+  })
 
   it.skipIf(!has(shell) || !recordsHistory(shell))('runs the script in the shell and records it in shell history', async () => {
     const { out, err } = await run(`hop hi\necho EXIT=${s.status}\n${s.lastHistory}`)

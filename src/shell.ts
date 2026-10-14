@@ -6,6 +6,10 @@
  * writes the command line there instead of running it; the wrapper adds that line to
  * history and evals it. If nothing is written (--list, --help, cancel), hop's own exit
  * code is returned.
+ *
+ * atuin replaces ↑ and Ctrl-R with its own database, fed only by its preexec/postexec
+ * hooks for typed commands. When an atuin session is active, the wrapper records the
+ * command there too, the same way those hooks do (\`atuin history start\` / \`end\`).
  */
 
 const fish = `# hop shell integration for fish
@@ -19,17 +23,27 @@ function hop --description 'Fuzzy-find and run package.json scripts'
     if test -z "$cmd"
         return $code
     end
+    set -l atuin_id
+    if set -q ATUIN_SESSION; and test -z "$fish_private_mode"; and command -q atuin
+        set atuin_id (ATUIN_SHELL=fish command atuin history start -- "$cmd" 2>/dev/null)
+    end
     # \`history append\` arrived in fish 4.0; older fish would treat it as a search. Writing
     # the history file directly isn't safe (fish tracks its own file offsets), so older
-    # fish just runs the command and says once why it isn't in history.
+    # fish just runs the command and, unless atuin recorded it, says once why.
     if test (string split -f1 . -- $FISH_VERSION) -ge 4
         builtin history append -- "$cmd"
-    else if not set -q __hop_history_warned
+    else if test -z "$atuin_id"; and not set -q __hop_history_warned
         set -g __hop_history_warned 1
         printf 'hop: fish %s cannot add commands to history; upgrade to fish 4.0+ for that\\n' $FISH_VERSION >&2
     end
     printf '› %s\\n' "$cmd" >&2
     eval $cmd
+    set -l code $status
+    if test -n "$atuin_id"
+        command atuin history end --exit $code -- $atuin_id &>/dev/null &
+        disown
+    end
+    return $code
 end
 `
 
@@ -43,9 +57,18 @@ hop() {
   code=$?
   cmd=$(<"$cmd_file")
   [[ -z $cmd ]] && return $code
+  local atuin_id
+  if [[ -n $ATUIN_SESSION ]] && (( $+commands[atuin] )); then
+    atuin_id=$(ATUIN_SHELL=zsh command atuin history start -- "$cmd" 2>/dev/null)
+  fi
   print -s -- "$cmd"
   print -r -- "› $cmd" >&2
   eval "$cmd"
+  code=$?
+  if [[ -n $atuin_id ]]; then
+    (command atuin history end --exit $code -- "$atuin_id" &) >/dev/null 2>&1
+  fi
+  return $code
 }
 `
 

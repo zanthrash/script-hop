@@ -48,6 +48,8 @@ hop --init fish | source
 
 Adding to history needs fish 4.0 or later. On fish 3.x, scripts still run through your shell, and `hop` tells you once per session that history is skipped.
 
+If you use [atuin](https://atuin.sh), the command is also recorded in atuin's history, so atuin's ↑ and Ctrl-R find it too.
+
 **zsh**: add to `~/.zshrc`:
 
 ```zsh
