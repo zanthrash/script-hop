@@ -1,5 +1,11 @@
 # script-hop
 
+## 0.5.0
+
+### Minor Changes
+
+- [`6a9dca0`](https://github.com/zanthrash/script-hop/commit/6a9dca09ad022fa32d02b939de25c6ee8e5df781) Thanks [@zanthrash](https://github.com/zanthrash)! - Add `-a` / `--all` to include the scripts of every workspace package, labelled with the package name (e.g. `test (api)`) and run in that package's directory. Package names are searchable (`api test`), and `hop -a <name>` runs a script directly when only one package has it. Works with pnpm, npm, yarn and bun workspaces and deno workspaces.
+
 ## 0.4.0
 
 ### Minor Changes
