@@ -1,5 +1,11 @@
 # script-hop
 
+## 0.4.0
+
+### Minor Changes
+
+- [`326837d`](https://github.com/zanthrash/script-hop/commit/326837d8266ec812a61a20894a10acffaac482f0) Thanks [@zanthrash](https://github.com/zanthrash)! - Add bash shell integration. Add `eval "$(hop --init bash)"` to `~/.bashrc`, and the scripts you pick run in bash and are saved to its history as the real command, in place of the `hop` line. Works with bash 3.2 (macOS's `/bin/bash`) and later, and with atuin.
+
 ## 0.3.1
 
 ### Patch Changes
