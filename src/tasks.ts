@@ -1,5 +1,5 @@
 import { access, readFile } from 'node:fs/promises'
-import { dirname, join, relative, resolve } from 'node:path'
+import { dirname, join, relative, resolve, sep } from 'node:path'
 import { parse as parseJsonc } from 'jsonc-parser'
 import { detect } from 'package-manager-detector/detect'
 import { glob } from 'tinyglobby'
@@ -272,7 +272,8 @@ export async function loadProject(cwd: string, opts: LoadOptions = {}): Promise<
       for (const pkgDir of await workspacePackages(workspace, workspaceManifests)) {
         if (pkgDir === dir) continue
         const m = await readManifests(pkgDir)
-        const label = m.pkg?.name ?? m.deno?.name ?? relative(workspace, pkgDir)
+        // unnamed packages are labelled by path, with / on every platform
+        const label = m.pkg?.name ?? m.deno?.name ?? relative(workspace, pkgDir).split(sep).join('/')
         tasks.push(...tasksFrom(m, pm, allScripts, withHooks)
           .map((t): Task => ({ ...t, scope: 'package', package: label, cwd: pkgDir })))
       }
