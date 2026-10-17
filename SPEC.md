@@ -182,10 +182,62 @@ src/
   picker.ts       @inquirer/search integration
 ```
 
-## Future (post-v1)
+## v2: beyond Node, and native installs
+
+Agreed 2026-10-17. Built in this order, each step releasable on its own:
+
+1. **Standalone executable + Homebrew tap** (0.6.0)
+2. **Task-runner abstraction** (no user-visible change)
+3. **mise tasks** (0.7.0)
+4. **Gradle** (0.8.0)
+5. **Maven** (0.9.0)
+
+### Distribution
+
+- `bun build --compile` produces self-contained executables; no Node needed to install or run. Targets: macOS arm64 and x64, Linux x64 and arm64, built on each platform's CI runner.
+- Values read from `package.json` at runtime (the version) are embedded at build time instead.
+- **Homebrew** via a separate tap repo, `zanthrash/homebrew-tap`: `brew install zanthrash/tap/script-hop`. The formula installs the prebuilt executable per OS/arch (works on Homebrew for Linux too). No Apple signing/notarisation: Homebrew downloads don't carry the quarantine flag.
+- Release flow: merging the version PR publishes npm (unchanged), builds the 4 executables, attaches them with SHA-256 checksums to the GitHub release, then updates the formula in the tap. The tap is written with a fine-grained token scoped to `homebrew-tap` (Contents: read/write), stored as a repo secret.
+- npm stays as an install option.
+- Later: AUR (`script-hop-bin`), `.deb`/`.rpm` on releases, a hosted apt/yum repo or COPR, Scoop/winget.
+- Name notes: Homebrew has a *cask* named `hop` and the AUR a package `hop`; neither blocks `script-hop`, but check whether either installs a `hop` binary (AUR package should declare `conflicts`).
+
+### Task runners
+
+A project can have several runners; their tasks are merged into one list.
+
+- Each task is labelled with its runner (`dev (pnpm)`, `build (gradle)`, `mn:run (maven)`, `lint (mise)`) only when more than one runner is present, so pure Node projects look unchanged. The runner name is searchable (`gradle build`).
+- An exact name in several runners opens the picker filtered to it, unless frecency clearly favours one, in which case that one runs.
+- Wrappers are preferred over global installs: `./gradlew` over `gradle`, `./mvnw` over `mvn`.
+- hop doesn't pick a JDK: runners get the user's environment (e.g. `JAVA_HOME`/`PATH` from mise), exactly as when typing `./gradlew` by hand.
+
+### mise tasks
+
+- From `mise tasks --json`. Only tasks from config files inside the project (the project directory and its parents up to the repository root); global tasks (`~/.config/mise/config.toml`) are left out.
+- Run with `mise run <task>`.
+
+### Gradle
+
+- Tasks come from asking Gradle (`./gradlew tasks --all`), since most come from plugins and can't be read from build files.
+- Cached per project; the cache is reused until build inputs change (`build.gradle*`, `settings.gradle*`, `gradle.properties`, `gradle/libs.versions.toml`, `buildSrc/`). `hop --refresh` forces a re-read. First read shows a spinner.
+- One call at the root returns every module's tasks, so it serves both the default list and `--all`.
+- Only grouped tasks are shown by default (Build, Application, Verification, Documentation and custom groups); ungrouped low-level tasks (`compileJava`, `processResources`, …) need `--all-scripts`.
+- Failure (broken build, missing JDK, offline first run): other runners still show; one line explains (`hop: couldn't read Gradle tasks (exit 1); run "./gradlew tasks" to see why`); a previous cached list is used and marked stale; failures are never cached; reading gives up after 2 minutes (`HOP_GRADLE_TIMEOUT`).
+
+### Maven
+
+- Read from `pom.xml` directly (no Maven invocation): lifecycle phases (`clean`, `validate`, `compile`, `test`, `package`, `verify`, `install`, `deploy`, `site`), common combinations (`clean install`, `clean verify`, `clean package`), and goals of well-known plugins found in the POM from a built-in table, starting with Micronaut (`mn:run`), then Spring Boot, Quarkus, exec, jib, flyway and jetty, filled from each plugin's docs.
+- Later: user-defined commands per project (e.g. `.hop.toml`), for any runner.
+
+### Multi-module JVM builds
+
+Mirrors Node workspaces: in a module, its tasks plus the root build's; at the root, the root's tasks; `--all` adds every module, labelled `run (api)`. Tasks run through the root wrapper with module-qualified commands that also replay correctly from history, e.g. `./gradlew :api:run` / `../gradlew :api:run`, and `./mvnw -pl api mn:run` / `../mvnw -f ../pom.xml -pl api mn:run`. Each form gets checked against real builds before relying on it.
+
+## Future
 
 - Shell integration for PowerShell and Git Bash on Windows.
 - Tab to edit the command / add args before running.
 - Multi-select, sequential or parallel runs.
 - Additional task sources (Makefile, justfile, turbo.json).
-- Standalone `bun build --compile` binaries via Homebrew.
+- User-defined commands per project (`.hop.toml`).
+- More install channels: AUR, `.deb`/`.rpm`, apt/yum repo or COPR, Scoop/winget.
