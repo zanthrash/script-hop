@@ -33,6 +33,12 @@ jobs:
       - name: Install fish for shell integration tests
         if: runner.os == 'macOS'
         run: brew install fish
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm typecheck
       - run: pnpm test
+
+  # build and test the standalone executables on every push, not only at release time
+  binaries:
+    uses: ./.github/workflows/binaries.yml
+    permissions:
+      contents: read

@@ -1,14 +1,13 @@
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { makeProject } from './helpers.ts'
+import { hopCommand } from './hop-under-test.ts'
 
-const repo = fileURLToPath(new URL('..', import.meta.url))
-const cli = join(repo, 'dist/cli.mjs')
 
 async function hop(cwd: string, args: string[], historyFile?: string) {
-  const result = spawnSync(process.execPath, [cli, ...args], {
+  const [command, prefix] = hopCommand
+  const result = spawnSync(command, [...prefix, ...args], {
     cwd,
     encoding: 'utf8',
     env: { ...process.env, HOP_HISTORY: historyFile ?? join(cwd, '.hop-history.json'), HOP_PM: '' },

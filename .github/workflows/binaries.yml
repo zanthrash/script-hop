@@ -1,0 +1,125 @@
+name: Binaries
+
+# Builds the standalone `hop` executables (bun build --compile) on each platform and runs
+# the end-to-end and real-shell tests against them. Called from CI (build + test only)
+# and from Release (also attaches them to the GitHub release and updates the Homebrew tap).
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Released version to build and publish (e.g. 0.6.0). Empty = build and test only.
+        type: string
+        default: ''
+    secrets:
+      HOMEBREW_TAP_TOKEN:
+        required: false
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: darwin-arm64, os: macos-latest, bun: bun-darwin-arm64 }
+          - { target: darwin-x64, os: macos-15-intel, bun: bun-darwin-x64-baseline }
+          - { target: linux-x64, os: ubuntu-latest, bun: bun-linux-x64-baseline }
+          - { target: linux-arm64, os: ubuntu-24.04-arm, bun: bun-linux-arm64 }
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.version && format('v{0}', inputs.version) || github.sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      # also installs the pinned bun (its postinstall is allowed in package.json)
+      - run: pnpm install --frozen-lockfile
+
+      - name: Compile
+        run: pnpm exec bun build src/cli.ts --compile --minify --target ${{ matrix.bun }} --outfile dist/bin/hop
+      - name: Check the macOS signature
+        if: runner.os == 'macOS'
+        # Apple Silicon refuses unsigned code; bun signs ad hoc, re-sign if it didn't
+        run: codesign -v dist/bin/hop || { codesign --force --sign - dist/bin/hop && codesign -v dist/bin/hop; }
+
+      - name: Install fish and zsh for the shell tests
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y fish zsh
+      - name: Install fish for the shell tests
+        if: runner.os == 'macOS'
+        run: brew install fish
+      - name: Test the executable
+        run: |
+          dist/bin/hop --version
+          HOP_BIN=dist/bin/hop pnpm vitest run test/e2e.test.ts test/shell.test.ts
+
+      - name: Package
+        id: package
+        run: |
+          version="${{ inputs.version }}"
+          version="${version:-$(node -p "require('./package.json').version")}"
+          archive="hop-v${version}-${{ matrix.target }}.tar.gz"
+          tar -czf "$archive" -C dist/bin hop
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.target }}
+          path: ${{ steps.package.outputs.archive }}
+          if-no-files-found: error
+
+  publish:
+    name: Release assets and Homebrew tap
+    if: inputs.version != ''
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # upload release assets
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: v${{ inputs.version }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - uses: actions/download-artifact@v8
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Checksums
+        working-directory: assets
+        run: sha256sum hop-v*.tar.gz > checksums.txt && cat checksums.txt
+      - name: Attach to the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "v${{ inputs.version }}" assets/* --clobber --repo "${{ github.repository }}"
+
+      - name: Generate the formula
+        run: node scripts/homebrew-formula.ts "${{ inputs.version }}" assets/checksums.txt > script-hop.rb && cat script-hop.rb
+      - uses: actions/checkout@v7
+        with:
+          repository: zanthrash/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+      - name: Update the tap
+        working-directory: tap
+        run: |
+          mkdir -p Formula
+          cp ../script-hop.rb Formula/script-hop.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/script-hop.rb
+          git diff --cached --quiet && { echo "formula unchanged"; exit 0; }
+          git commit -m "script-hop ${{ inputs.version }}"
+          git push

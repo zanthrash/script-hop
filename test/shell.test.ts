@@ -2,11 +2,10 @@ import { spawnSync } from 'node:child_process'
 import { mkdir, symlink, writeFile } from 'node:fs/promises'
 import { readFile } from 'node:fs/promises'
 import { delimiter, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { makeProject } from './helpers.ts'
+import { hopExecutable } from './hop-under-test.ts'
 
-const cli = fileURLToPath(new URL('../dist/cli.mjs', import.meta.url))
 const has = (bin: string) => spawnSync(bin, ['--version']).status === 0
 // shell integration targets Unix shells; Windows runners have Git Bash, which isn't covered yet
 const available = (shell: string) => process.platform !== 'win32' && has(shell)
@@ -30,7 +29,7 @@ async function setup() {
     'home/.zshrc': 'HISTFILE=$HOME/.zsh_history\nHISTSIZE=1000\nSAVEHIST=1000\n',
     'home/.bashrc': 'HISTFILE=$HOME/.bash_history\nHISTSIZE=1000\nHISTFILESIZE=2000\n',
   })
-  await symlink(cli, join(dir, 'bin', 'hop'))
+  await symlink(hopExecutable, join(dir, 'bin', 'hop'))
   const home = join(dir, 'home')
   // never inherit the developer's own shell setup, history locations or atuin session
   const inherited = Object.fromEntries(Object.entries(process.env).filter(([k]) =>

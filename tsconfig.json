@@ -9,7 +9,8 @@
     "skipLibCheck": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["src", "test"]
+  "include": ["src", "test", "scripts"]
 }

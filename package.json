@@ -1,7 +1,7 @@
 {
   "name": "script-hop",
   "version": "0.5.0",
-  "description": "Fuzzy, frecency-ranked picker for package.json scripts. Works with npm, pnpm, yarn, bun and deno.",
+  "description": "Fuzzy, frecency-ranked picker for your project's scripts and tasks. Works with npm, pnpm, yarn, bun and deno.",
   "author": "zanthrash",
   "repository": {
     "type": "git",
@@ -27,7 +27,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "changeset": "changeset"
+    "changeset": "changeset",
+    "build:bin": "bun build src/cli.ts --compile --minify --outfile dist/bin/hop"
   },
   "keywords": [
     "npm",
@@ -57,11 +58,17 @@
     "@changesets/cli": "^3.0.3",
     "@types/cross-spawn": "^6.0.6",
     "@types/node": "^22.20.5",
+    "bun": "1.4.3",
     "tsdown": "^0.23.1",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"
   },
   "publishConfig": {
     "access": "public"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "bun"
+    ]
   }
 }

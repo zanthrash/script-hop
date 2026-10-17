@@ -18,11 +18,19 @@ Works with **npm, pnpm, yarn, bun and deno**, picking whichever your project use
 
 ## Install
 
+**Homebrew** (macOS and Linux), a standalone executable that doesn't need Node:
+
+```sh
+brew install zanthrash/tap/script-hop
+```
+
+**npm**, if you prefer (Node.js 22 or later):
+
 ```sh
 npm install -g script-hop
 ```
 
-Requires Node.js 22 or later. The command is `hop`.
+Either way the command is `hop`. With a Node version manager (fnm, nvm, mise), an npm install belongs to one Node version and has to be reinstalled when you switch; the Homebrew install doesn't. If you move from npm to Homebrew, remove the npm copy (`npm uninstall -g script-hop`) so it doesn't shadow the Homebrew one on your `PATH`.
 
 ## Usage
 
@@ -157,7 +165,9 @@ hop --list | cut -f1 | fzf | xargs hop
 pnpm install
 pnpm test       # unit and end-to-end tests
 pnpm typecheck
-pnpm build      # bundles to dist/cli.mjs
+pnpm build      # bundles to dist/cli.mjs (the npm package)
+pnpm build:bin  # standalone executable for this machine: dist/bin/hop
+HOP_BIN=dist/bin/hop pnpm vitest run test/e2e.test.ts test/shell.test.ts  # test it
 ```
 
 See [SPEC.md](SPEC.md) for the design.
@@ -168,7 +178,7 @@ Releases use [Changesets](https://changesets.dev):
 
 1. With a change, run `pnpm changeset` and commit the generated file.
 2. On `main`, the Release workflow opens a "Release: version packages" PR that bumps the version and updates `CHANGELOG.md`.
-3. Merging that PR publishes to npm through [trusted publishing](https://docs.npmjs.com/trusted-publishers), with no npm token, and creates a GitHub release.
+3. Merging that PR publishes to npm through [trusted publishing](https://docs.npmjs.com/trusted-publishers), with no npm token, and creates a GitHub release. Standalone executables for macOS and Linux (arm64 and x64) are then built and tested on each platform, attached to the release with checksums, and the formula in [zanthrash/homebrew-tap](https://github.com/zanthrash/homebrew-tap) is updated. That last step uses the `HOMEBREW_TAP_TOKEN` secret: a fine-grained token with Contents read/write on `homebrew-tap` only.
 
 npm only allows trusted publishing for a package that already exists, so the very first version has to be published by hand:
 

@@ -1,6 +1,7 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { writeFile } from 'node:fs/promises'
 import { relative, sep } from 'node:path'
 import { parseArgs } from 'node:util'
+import pkg from '../package.json' with { type: 'json' }
 import { buildCommand, toShell, type Command } from './command.ts'
 import { openHistory } from './history.ts'
 import { rank, type Ranked } from './rank.ts'
@@ -83,9 +84,8 @@ function parse(argv: string[], env: IO['env']) {
   }
 }
 
+// bundled at build time, so the standalone executable needs no package.json beside it
 async function version(): Promise<string> {
-  // src/app.ts in development, dist/cli.js when built: package.json is one level up either way
-  const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
   return pkg.version
 }
 

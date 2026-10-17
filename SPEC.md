@@ -200,7 +200,11 @@ Agreed 2026-10-17. Built in this order, each step releasable on its own:
 - Release flow: merging the version PR publishes npm (unchanged), builds the 4 executables, attaches them with SHA-256 checksums to the GitHub release, then updates the formula in the tap. The tap is written with a fine-grained token scoped to `homebrew-tap` (Contents: read/write), stored as a repo secret.
 - npm stays as an install option.
 - Later: AUR (`script-hop-bin`), `.deb`/`.rpm` on releases, a hosted apt/yum repo or COPR, Scoop/winget.
-- Name notes: Homebrew has a *cask* named `hop` and the AUR a package `hop`; neither blocks `script-hop`, but check whether either installs a `hop` binary (AUR package should declare `conflicts`).
+- Name notes: Homebrew's `hop` cask only installs `HOP.app` (no `hop` command), so there's no clash. The AUR has a package `hop`; check whether it installs a `hop` binary before publishing there (declare `conflicts` if so).
+- Built with a pinned bun (dev dependency, 1.4.3). bun 1.3.12 produced unsigned macOS executables that Apple Silicon killed on launch (exit 137); 1.4.3 signs them ad hoc. CI checks the signature and re-signs ad hoc if needed.
+- x64 executables use bun's `baseline` builds (no AVX2 requirement) for older CPUs.
+- The end-to-end and real-shell tests run against each platform's executable (`HOP_BIN=…`) in CI on every push and before publishing.
+- Checked with a real Homebrew install from a local tap: install, `brew test`, and the signature survives installation.
 
 ### Task runners
 
