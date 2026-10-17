@@ -28,7 +28,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "changeset": "changeset",
-    "build:bin": "bun build src/cli.ts --compile --minify --outfile dist/bin/hop"
+    "build:bin": "bun build src/cli.ts --compile --minify --outfile build/hop"
   },
   "keywords": [
     "npm",

@@ -44,11 +44,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Compile
-        run: pnpm exec bun build src/cli.ts --compile --minify --target ${{ matrix.bun }} --outfile dist/bin/hop
+        run: pnpm exec bun build src/cli.ts --compile --minify --target ${{ matrix.bun }} --outfile build/hop
       - name: Check the macOS signature
         if: runner.os == 'macOS'
         # Apple Silicon refuses unsigned code; bun signs ad hoc, re-sign if it didn't
-        run: codesign -v dist/bin/hop || { codesign --force --sign - dist/bin/hop && codesign -v dist/bin/hop; }
+        run: codesign -v build/hop || { codesign --force --sign - build/hop && codesign -v build/hop; }
 
       - name: Install fish and zsh for the shell tests
         if: runner.os == 'Linux'
@@ -58,8 +58,8 @@ jobs:
         run: brew install fish
       - name: Test the executable
         run: |
-          dist/bin/hop --version
-          HOP_BIN=dist/bin/hop pnpm vitest run test/e2e.test.ts test/shell.test.ts
+          build/hop --version
+          HOP_BIN=build/hop pnpm vitest run test/e2e.test.ts test/shell.test.ts
 
       - name: Package
         id: package
@@ -67,7 +67,7 @@ jobs:
           version="${{ inputs.version }}"
           version="${version:-$(node -p "require('./package.json').version")}"
           archive="hop-v${version}-${{ matrix.target }}.tar.gz"
-          tar -czf "$archive" -C dist/bin hop
+          tar -czf "$archive" -C build hop
           echo "archive=$archive" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
         with:

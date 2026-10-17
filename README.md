@@ -166,8 +166,8 @@ pnpm install
 pnpm test       # unit and end-to-end tests
 pnpm typecheck
 pnpm build      # bundles to dist/cli.mjs (the npm package)
-pnpm build:bin  # standalone executable for this machine: dist/bin/hop
-HOP_BIN=dist/bin/hop pnpm vitest run test/e2e.test.ts test/shell.test.ts  # test it
+pnpm build:bin  # standalone executable for this machine: build/hop
+HOP_BIN=build/hop pnpm vitest run test/e2e.test.ts test/shell.test.ts  # test it
 ```
 
 See [SPEC.md](SPEC.md) for the design.
