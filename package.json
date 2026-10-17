@@ -1,6 +1,6 @@
 {
   "name": "script-hop",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Fuzzy, frecency-ranked picker for your project's scripts and tasks. Works with npm, pnpm, yarn, bun and deno.",
   "author": "zanthrash",
   "repository": {

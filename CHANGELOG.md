@@ -1,5 +1,11 @@
 # script-hop
 
+## 0.6.0
+
+### Minor Changes
+
+- [`b7350de`](https://github.com/zanthrash/script-hop/commit/b7350debc17f9d697d5f6585586ed8f28cfa839c) Thanks [@zanthrash](https://github.com/zanthrash)! - Standalone executables and Homebrew. `brew install zanthrash/tap/script-hop` installs a self-contained `hop` for macOS or Linux (arm64 or x64) that doesn't need Node, so it keeps working when you switch Node versions. It also starts faster (~30 ms). npm installs work as before.
+
 ## 0.5.0
 
 ### Minor Changes
