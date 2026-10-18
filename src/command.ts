@@ -1,4 +1,4 @@
-import type { PM } from './tasks.ts'
+import type { PM, Task } from './tasks.ts'
 
 export interface Command {
   bin: string
@@ -15,6 +15,11 @@ const runArgs: Record<PM, (name: string, dir?: string) => string[]> = {
   yarn: (name, dir) => [...(dir ? ['--cwd', dir] : []), name],
   bun: (name, dir) => ['run', ...(dir ? ['--cwd', dir] : []), name],
   deno: (name, dir) => ['task', ...(dir ? ['--cwd', dir] : []), name],
+}
+
+/** The command that runs `task`, optionally from another directory (for shell history). */
+export function commandFor(task: Pick<Task, 'runner' | 'name'>, extraArgs: string[], dir?: string): Command {
+  return buildCommand(task.runner, task.name, extraArgs, dir)
 }
 
 export function buildCommand(pm: PM, name: string, extraArgs: string[], dir?: string): Command {

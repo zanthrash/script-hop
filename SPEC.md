@@ -168,19 +168,28 @@ Read, in order: `hop.descriptions`, `ntl.descriptions`, `scripts-info` (package.
 | CI | GitHub Actions, matrix ubuntu/macos/windows × Node 22/24 |
 | Release | changesets, npm publish with provenance |
 
-### Module layout (proposed)
+### Module layout
 
 ```
 src/
   cli.ts          entry point: wires real IO into main
   app.ts          main(argv, io): arg parsing, flow, exit codes (tested with fake IO)
-  tasks.ts        project discovery, PM detection, task sources, workspaces
+  tasks.ts        loadProject: asks every task source, merges their tasks
+  types.ts        Task, Project, TaskSource, RunnerId
+  sources/
+    node.ts       package.json scripts + deno.json tasks: PM detection, workspaces, hooks
+  fs.ts           file helpers shared by sources (exists, findUp, readJson)
   rank.ts         frecency + fuzzy combination (pure)
   history.ts      load/save/prune history file
-  command.ts      build run command per manager (pure)
+  command.ts      command for a task, from its runner (pure); shell quoting
   run.ts          spawn + signal forwarding
   picker.ts       @inquirer/search integration
+  shell.ts        fish/zsh/bash wrappers for --init
+scripts/
+  homebrew-formula.ts   formula for zanthrash/homebrew-tap, from release checksums
 ```
+
+A **task source** finds its own nearest project from where hop starts and returns tasks; each task records its **runner** (`pnpm`, later `mise`, `gradle`, `maven`), and the command to run it is built from that runner, not from one project-wide package manager. That's what lets one list mix runners. New runners are new files in `src/sources/`.
 
 ## v2: beyond Node, and native installs
 

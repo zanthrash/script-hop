@@ -6,7 +6,7 @@ const DAY = 24 * 60 * 60 * 1000
 const now = Date.UTC(2026, 9, 11)
 
 const task = (name: string, command = `echo ${name}`, cwd = '/repo'): Task => ({
-  name, command, cwd, source: 'pkg', scope: cwd === '/repo' ? 'local' : 'root',
+  name, command, cwd, runner: 'npm', source: 'pkg', scope: cwd === '/repo' ? 'local' : 'root',
 })
 
 const tasks = [task('test'), task('dev'), task('build'), task('lint')]
@@ -90,7 +90,7 @@ describe('rank with a query', () => {
 
 describe('rank with workspace packages', () => {
   const pkgTask = (name: string, pkg: string, command = `echo ${name}`): Task =>
-    ({ name, command, cwd: `/repo/packages/${pkg}`, source: 'pkg', scope: 'package', package: pkg })
+    ({ name, command, cwd: `/repo/packages/${pkg}`, runner: 'npm', source: 'pkg', scope: 'package', package: pkg })
 
   it('matches on the package name, highlighting only within the script name', () => {
     const list = [pkgTask('dev', 'web'), pkgTask('test', 'api'), pkgTask('dev', 'api'), task('lint')]

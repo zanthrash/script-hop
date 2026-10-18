@@ -3,7 +3,7 @@ import { footer } from '../src/picker.ts'
 import type { Task } from '../src/tasks.ts'
 
 const task = (over: Partial<Task>): Task =>
-  ({ name: 'build', command: 'tsc', source: 'pkg', scope: 'local', cwd: '/repo', ...over })
+  ({ name: 'build', command: 'tsc', runner: 'npm', source: 'pkg', scope: 'local', cwd: '/repo', ...over })
 
 describe('picker footer', () => {
   it('shows the command', () => {
