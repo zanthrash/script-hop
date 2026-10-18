@@ -114,7 +114,7 @@ describe.skipIf(!hasGradle)('built hop with Gradle', { timeout: 300_000 }, () =>
     const result = await hop(join(root, 'app/src'), ['run', '--', '-q', '--args=a1 a2'], undefined, { HOP_CACHE: join(root, '.cache') })
     expect(result.stderr).toContain("› gradle :app:run -q '--args=a1 a2'")
     expect(result.stdout).toContain('hello from lib a1,a2')
-    expect(result.code).toBe(0)
+    expect(result.code, result.stdout + result.stderr).toBe(0)
   })
 
   it("passes Gradle's exit code through", async () => {
@@ -147,7 +147,8 @@ describe.skipIf(!hasMaven)('built hop with Maven', { timeout: 300_000 }, () => {
     const root = await mavenBuild()
     const result = await hop(join(root, 'app/src'), ['compile', '--', '-B', '-q'])
     expect(result.stderr).toContain('› mvn -pl app -am compile -B -q')
-    expect(result.code).toBe(0)
+    // on failure, show what Maven said
+    expect(result.code, result.stdout + result.stderr).toBe(0)
   })
 
   it('lists phases and combinations', async () => {
