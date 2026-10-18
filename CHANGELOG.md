@@ -1,5 +1,13 @@
 # script-hop
 
+## 0.8.0
+
+### Minor Changes
+
+- [`2de0ff6`](https://github.com/zanthrash/script-hop/commit/2de0ff63feb175d335e01759b3ac9f63c7378d73) Thanks [@zanthrash](https://github.com/zanthrash)! - Gradle builds: `hop` lists a build's tasks (everyday ones by default, everything with `--all-scripts`) and runs them through the build's `gradlew`. Multi-module builds work like workspaces: at the root each task runs across modules, in a module you get that module's tasks, and `-a` adds every module. Task lists are cached until a build file changes; `--refresh` reads them again.
+  
+  Also: `hop --list | head` no longer crashes when the reader stops early.
+
 ## 0.7.0
 
 ### Minor Changes
