@@ -200,12 +200,10 @@ _Updated 2026-10-18. Keep this section current; it's the hand-off point between 
 
 **Goal:** `hop` becomes one fast picker for every task runner in a project, installable without Node. v1 (Node runners, frecency, fuzzy search, shell integration for fish/zsh/bash, `--all` workspaces) is shipped. v2 adds non-Node runners (mise, then the JVM: Gradle and Maven) and native installs (Homebrew).
 
-**Released:** 0.7.0 (mise tasks), the first fully automatic release: npm → GitHub release with 4 executables → tap formula updated by CI. `brew upgrade script-hop` verified.
-
-**In progress:** step 4, Gradle (0.8.0): built and tested (see "Gradle" below), waiting to be pushed and released.
+**Released:** 0.8.0 (Gradle builds). Releases are fully automatic: npm → GitHub release with 4 executables → tap formula updated by CI; `brew upgrade script-hop` verified for 0.7.0 and 0.8.0.
 
 **Next:**
-1. Release 0.8.0, then try it on a real Micronaut/Gradle project of the user's.
+1. Try 0.8.0 on a real Micronaut/Gradle project of the user's; fix what turns up.
 2. **Step 5, Maven (0.9.0)**: design below under "Maven"; the plugin table starts with Micronaut `mn:run`, the user's main goal. Get Java/Maven via mise (`mise exec java@21 maven@3 -- …`), not sdkman, and verify every command form against real builds, as was done for Gradle.
 3. Later: the "Future" list at the end.
 
@@ -218,7 +216,7 @@ Agreed 2026-10-17. Built in this order, each step releasable on its own:
 1. **Standalone executable + Homebrew tap** (0.6.0): done
 2. **Task-runner abstraction** (no user-visible change): done
 3. **mise tasks** (0.7.0): done
-4. **Gradle** (0.8.0): built
+4. **Gradle** (0.8.0): done
 5. **Maven** (0.9.0): next
 
 ### Distribution
@@ -256,7 +254,7 @@ A project can have several runners; their tasks are merged into one list.
 - Same name in several runners at the same level: the task with at least twice the frecency of the next runs; otherwise the picker (non-TTY: error naming the runners).
 - Tested against real mise with an isolated global config and trust settings; CI installs mise (`jdx/mise-action`) on Linux and macOS, including for the standalone executables.
 
-### Gradle (built, 0.8.0)
+### Gradle (released, 0.8.0)
 
 - `sources/gradle.ts`. The build is the nearest `settings.gradle(.kts)` above where hop starts, or else a lone `build.gradle(.kts)` (Gradle's own rule). Its `gradlew` is used if present, else `gradle` from PATH.
 - Tasks come from asking Gradle, since most come from plugins and can't be read from build files. Not by parsing `tasks --all` output: hop passes a small Groovy init script (`--init-script`) that, after configuration, writes every project's path, directory and tasks (name, group, description) as JSON to a file named by `-Dhop.out`. That gives each module's real directory (needed to know which module you're in; `tasks --all` doesn't say), and output from build scripts can't corrupt it. It only reports the top-level build (`gradle.parent == null`), not `buildSrc` or included builds. Run with `-q --console=plain --no-configuration-cache --no-configure-on-demand`. Checked on Gradle 8.14 and 9.8, with the configuration cache and configure-on-demand on, and a `buildSrc` with convention plugins: no warnings.
