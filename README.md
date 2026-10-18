@@ -1,6 +1,6 @@
 # script-hop
 
-Fuzzy-find and run your project's scripts and tasks (package.json, deno.json, mise, Gradle). The ones you use most are always at the top.
+Fuzzy-find and run your project's scripts and tasks (package.json, deno.json, mise, Gradle, Maven). The ones you use most are always at the top.
 
 ```
 $ hop
@@ -14,7 +14,7 @@ $ hop
 vite --port 3000
 ```
 
-Works with **npm, pnpm, yarn, bun and deno**, picking whichever your project uses, and with **mise** tasks and **Gradle** builds. Inspired by [ntl](https://github.com/ruyadorno/ntl).
+Works with **npm, pnpm, yarn, bun and deno**, picking whichever your project uses, and with **mise** tasks, **Gradle** and **Maven** builds. Inspired by [ntl](https://github.com/ruyadorno/ntl).
 
 ## Install
 
@@ -162,6 +162,33 @@ Multi-module builds work like workspaces:
 | With `-a` | Also every other module's tasks, e.g. `test (lib)` | `../../gradlew :lib:test` |
 
 If Gradle can't list the tasks (a broken build script, no Java), `hop` says why in one line, still shows your other scripts, and uses the last list it read if it has one.
+
+### Maven
+
+In a Maven build, `hop` lists the lifecycle phases (`clean`, `compile`, `test`, `package`, `verify`, `install`, `deploy`, …), the combinations people type all the time (`clean install`, `clean verify`, `clean package`), and the everyday goals of well-known plugins your POMs use:
+
+| Plugin | Goals |
+|---|---|
+| Micronaut | `mn:run`, `mn:dockerfile` |
+| Spring Boot | `spring-boot:run`, `spring-boot:test-run`, `spring-boot:build-image` |
+| Quarkus | `quarkus:dev`, `quarkus:test`, `quarkus:build`, `quarkus:image-build` |
+| exec | `exec:java`, `exec:exec` |
+| Jib | `jib:build`, `jib:dockerBuild`, `jib:buildTar` |
+| Flyway | `flyway:migrate`, `flyway:info`, `flyway:validate`, `flyway:repair`, `flyway:baseline` |
+| Jetty | `jetty:run`, `jetty:run-war` |
+
+It reads `pom.xml` files directly, so listing is instant and Maven isn't started until you run something. Tasks run through the build's `./mvnw` (or `mvn` from your PATH). `hop clean install` runs the combination by name.
+
+Multi-module builds work like workspaces:
+
+| Where you are | What's listed | Runs as |
+|---|---|---|
+| The build's root | Phases for the whole build | `./mvnw clean install` |
+| | plus each module's plugin goals, labelled with the module | `./mvnw -pl app -am mn:run` |
+| In a module (`app/src/…`) | That module's phases and goals | `../../mvnw -f ../.. -pl app -am test` |
+| With `-a` | Also the build's phases and every module's tasks | |
+
+`-am` makes Maven build the modules `app` depends on first, so it works in a fresh checkout. Plugin goals other than Micronaut's run with plain `-pl app`, because with `-am` Maven would run the goal in those other modules too, where it usually fails; run `install` once first if `app` depends on other modules.
 
 ### Hidden scripts
 

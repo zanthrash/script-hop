@@ -99,3 +99,37 @@ describe('handoffDir', () => {
     expect(handoffDir(task({ runner: 'gradle' }), '/r')).toBe('.')
   })
 })
+
+describe('commandFor with Maven', () => {
+  const maven = (goals: string[], module?: string, wrapper = true, alsoMake = !!module) => ({
+    runner: 'maven' as const,
+    name: goals.join(' '),
+    maven: { goals, ...(module ? { module } : {}), alsoMake, wrapper },
+  })
+
+  it("runs through the build's wrapper from the root", () => {
+    expect(commandFor(maven(['clean', 'install']), [])).toEqual({ bin: './mvnw', args: ['clean', 'install'] })
+    expect(commandFor(maven(['mn:run']), ['-Dmn.watch=false'], '.')).toEqual({ bin: './mvnw', args: ['mn:run', '-Dmn.watch=false'] })
+  })
+
+  it("builds a module with what it depends on", () => {
+    expect(commandFor(maven(['mn:run'], 'app'), [])).toEqual({ bin: './mvnw', args: ['-pl', 'app', '-am', 'mn:run'] })
+  })
+
+  it('leaves out -am where the goal would also run in upstream modules', () => {
+    expect(commandFor(maven(['exec:java'], 'app', true, false), [])).toEqual({ bin: './mvnw', args: ['-pl', 'app', 'exec:java'] })
+  })
+
+  it('points Maven at the root POM from a subfolder', () => {
+    expect(commandFor(maven(['mn:run'], 'app'), [], '../..')).toEqual({ bin: '../../mvnw', args: ['-f', '../..', '-pl', 'app', '-am', 'mn:run'] })
+    expect(commandFor(maven(['test']), [], '..')).toEqual({ bin: '../mvnw', args: ['-f', '..', 'test'] })
+  })
+
+  it('uses mvn from PATH when the build has no wrapper', () => {
+    expect(commandFor(maven(['verify'], undefined, false), [], '..')).toEqual({ bin: 'mvn', args: ['-f', '..', 'verify'] })
+  })
+
+  it('always gives Maven tasks the way back to the build root', () => {
+    expect(handoffDir({ runner: 'maven', scope: 'local', cwd: '/r' }, '/r/app/src')).toBe('../..')
+  })
+})

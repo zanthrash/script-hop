@@ -85,17 +85,19 @@ export async function openHistory(file: string): Promise<History> {
   }
 }
 
-type Keyed = { name: string; runner: string; source: string; gradle?: { target: string } }
+type Keyed = { name: string; runner: string; source: string; gradle?: { target: string }; maven?: { module?: string } }
 
 /**
  * A task's key within its directory's history. package.json and deno.json scripts use the
  * bare name, as they always have (so history survives switching npm <-> pnpm); other
  * runners are prefixed, so `build (mise)` and `build (pnpm)` in one folder stay apart.
- * Gradle tasks all run from the build root, so they're keyed by Gradle path (`:app:run`).
+ * Gradle and Maven tasks all run from the build root, so they're keyed by Gradle path
+ * (`:app:run`) or Maven module (`app/mn:run`).
  */
 export function historyKey(task: Keyed): string {
   if (task.source === 'pkg' || task.source === 'deno') return task.name
-  return `@${task.runner}:${task.gradle?.target ?? task.name}`
+  const module = task.maven?.module
+  return `@${task.runner}:${task.gradle?.target ?? (module ? `${module}/${task.name}` : task.name)}`
 }
 
 /** A task's history entry, if it has been run. */

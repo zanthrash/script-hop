@@ -47,6 +47,7 @@
     "@inquirer/search": "^4.3.4",
     "cross-spawn": "^7.0.6",
     "env-paths": "^4.0.0",
+    "fast-xml-parser": "5.11.2",
     "fzf": "^0.5.2",
     "jsonc-parser": "^3.3.1",
     "package-manager-detector": "^1.9.0",

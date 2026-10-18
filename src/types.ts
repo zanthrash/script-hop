@@ -1,8 +1,8 @@
 export const PMS = ['npm', 'pnpm', 'yarn', 'bun', 'deno'] as const
 export type PM = (typeof PMS)[number]
 
-/** What runs a task: a Node package manager, mise or Gradle (Maven to come). */
-export type RunnerId = PM | 'mise' | 'gradle'
+/** What runs a task: a Node package manager, mise, Gradle or Maven. */
+export type RunnerId = PM | 'mise' | 'gradle' | 'maven'
 
 export interface Task {
   name: string
@@ -11,7 +11,7 @@ export interface Task {
   command: string
   description?: string
   /** Which file the task is defined in. */
-  source: 'pkg' | 'deno' | 'mise' | 'gradle'
+  source: 'pkg' | 'deno' | 'mise' | 'gradle' | 'maven'
   /**
    * Where the task comes from: the nearest package (`local`), the workspace root (`root`),
    * or, with `--all`, another workspace package (`package`).
@@ -28,6 +28,12 @@ export interface Task {
    * module that has it), and whether the build has its own `gradlew`.
    */
   gradle?: { target: string; wrapper: boolean }
+  /**
+   * For Maven tasks: the phases or goals to run, the module they're for (its path from the
+   * build root, for `-pl`), whether to also build the modules it depends on (`-am`), and
+   * whether the build has its own `mvnw`.
+   */
+  maven?: { goals: string[]; module?: string; alsoMake?: boolean; wrapper: boolean }
 }
 
 export interface Project {
@@ -70,7 +76,7 @@ export interface SourceResult {
 }
 
 /**
- * One kind of task definition (package.json scripts, mise, Gradle, and later Maven).
+ * One kind of task definition (package.json scripts, mise, Gradle, Maven).
  * Finds its own nearest project from `cwd`; resolves to undefined when there is none.
  */
 export interface TaskSource {

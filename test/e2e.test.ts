@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { hasGradle, hasMise, isolateMise, makeProject } from './helpers.ts'
+import { hasGradle, hasMaven, hasMise, isolateMise, makeProject } from './helpers.ts'
 import { hopCommand } from './hop-under-test.ts'
 
 
@@ -121,5 +121,38 @@ describe.skipIf(!hasGradle)('built hop with Gradle', { timeout: 300_000 }, () =>
     const root = await gradleBuild()
     const result = await hop(root, ['run', '--', '-q', '--no-such-flag'], undefined, { HOP_CACHE: join(root, '.cache') })
     expect(result.code).not.toBe(0)
+  })
+})
+
+// A real two-module Maven build, app depending on lib, with a group never installed in the
+// local repository, so building app from inside it only works if hop builds lib too.
+const mavenBuild = () => {
+  const group = `hop.e2e.r${Date.now()}`
+  const project = (artifactId: string, body = '') =>
+    `<project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion>${body}<artifactId>${artifactId}</artifactId></project>`
+  const parent = `<parent><groupId>${group}</groupId><artifactId>root</artifactId><version>1</version></parent>`
+  return makeProject({
+    'pom.xml': project('root', `<groupId>${group}</groupId><version>1</version><packaging>pom</packaging>
+      <properties><maven.compiler.release>17</maven.compiler.release><project.build.sourceEncoding>UTF-8</project.build.sourceEncoding></properties>
+      <modules><module>lib</module><module>app</module></modules>`),
+    'lib/pom.xml': project('lib', parent),
+    'lib/src/main/java/demo/lib/Lib.java': 'package demo.lib; public class Lib { public static String name() { return "lib"; } }\n',
+    'app/pom.xml': project('app', `${parent}<dependencies><dependency><groupId>${group}</groupId><artifactId>lib</artifactId><version>1</version></dependency></dependencies>`),
+    'app/src/main/java/demo/App.java': 'package demo; public class App { String n = demo.lib.Lib.name(); }\n',
+  })
+}
+
+describe.skipIf(!hasMaven)('built hop with Maven', { timeout: 300_000 }, () => {
+  it("builds a module with the modules it depends on, from inside it", async () => {
+    const root = await mavenBuild()
+    const result = await hop(join(root, 'app/src'), ['compile', '--', '-B', '-q'])
+    expect(result.stderr).toContain('› mvn -pl app -am compile -B -q')
+    expect(result.code).toBe(0)
+  })
+
+  it('lists phases and combinations', async () => {
+    const root = await mavenBuild()
+    const names = (await hop(root, ['--list'])).stdout.trim().split('\n').map((line) => line.split('\t')[0])
+    expect(names).toEqual(expect.arrayContaining(['clean', 'test', 'install', 'clean install']))
   })
 })

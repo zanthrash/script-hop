@@ -22,10 +22,14 @@ const runArgs: Record<PM, (name: string, dir?: string) => string[]> = {
  * The command that runs `task`, optionally from another directory (for shell history).
  * `dir` is relative to where the command will be typed.
  */
-export function commandFor(task: Pick<Task, 'runner' | 'name' | 'gradle'>, extraArgs: string[], dir?: string): Command {
+export function commandFor(task: Pick<Task, 'runner' | 'name' | 'gradle' | 'maven'>, extraArgs: string[], dir?: string): Command {
   if (task.runner === 'gradle') {
     if (!task.gradle) throw new Error(`Gradle task "${task.name}" has no Gradle path`)
     return gradleCommand(task.gradle, extraArgs, dir)
+  }
+  if (task.runner === 'maven') {
+    if (!task.maven) throw new Error(`Maven task "${task.name}" has no goals`)
+    return mavenCommand(task.maven, extraArgs, dir)
   }
   if (task.runner === 'mise') {
     // `--` keeps flags meant for the task away from `mise run`'s own options
@@ -48,12 +52,25 @@ function gradleCommand({ target, wrapper }: NonNullable<Task['gradle']>, extraAr
 }
 
 /**
+ * Maven runs through the build root's wrapper. Away from the root, `-f` points it at the
+ * root POM. A module's tasks run with `-pl <module>`, and `-am` where that's safe, to also
+ * build the modules it depends on. Each form was checked against a real multi-module build.
+ */
+function mavenCommand({ goals, module, alsoMake, wrapper }: NonNullable<Task['maven']>, extraArgs: string[], dir?: string): Command {
+  const atRoot = !dir || dir === '.'
+  const bin = !wrapper ? 'mvn' : atRoot ? './mvnw' : `${dir}/mvnw`
+  const project = module ? ['-pl', module, ...(alsoMake ? ['-am'] : [])] : []
+  return { bin, args: [...(atRoot ? [] : ['-f', dir]), ...project, ...goals, ...extraArgs] }
+}
+
+/**
  * Directory to spell out when handing `task` to the user's shell from `from`, so the line
  * works as typed there (and from history). Local Node and mise tasks need none: their
- * runners find them by walking up. Gradle always needs the way back to the build root.
+ * runners find them by walking up. Gradle and Maven always need the way back to the
+ * build root.
  */
 export function handoffDir(task: Pick<Task, 'runner' | 'scope' | 'cwd'>, from: string): string | undefined {
-  if (task.scope === 'local' && task.runner !== 'gradle') return undefined
+  if (task.scope === 'local' && task.runner !== 'gradle' && task.runner !== 'maven') return undefined
   // forward slashes: the line is for fish/zsh/bash, and runners accept them on Windows too
   return relative(from, task.cwd).split(sep).join('/') || '.'
 }

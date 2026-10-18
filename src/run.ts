@@ -12,8 +12,11 @@ const FORWARDED = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const
  */
 export const exec: IO['exec'] = (command, cwd) =>
   new Promise((resolve) => {
-    // a Gradle wrapper is a shell script; Windows runs its .bat twin
-    const bin = process.platform === 'win32' && /(^|\/)gradlew$/.test(command.bin) ? `${command.bin}.bat` : command.bin
+    // Gradle and Maven wrappers are shell scripts; Windows runs their .bat/.cmd twins
+    const bin = process.platform !== 'win32' ? command.bin
+      : /(^|\/)gradlew$/.test(command.bin) ? `${command.bin}.bat`
+      : /(^|\/)mvnw$/.test(command.bin) ? `${command.bin}.cmd`
+      : command.bin
     const child = spawn(bin, command.args, { cwd, stdio: 'inherit' })
 
     // Ctrl-C reaches the child directly via the terminal's process group; forwarding

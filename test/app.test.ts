@@ -202,7 +202,7 @@ describe('errors and edge cases', () => {
   it('fails clearly without a package.json', async () => {
     const h = await harness(join(await makeProject({ 'x/.keep': '' }), 'x'))
     expect(await main([], h.io)).toBe(1)
-    expect(h.err()).toMatch(/No package\.json, deno\.json, mise tasks or Gradle build found/)
+    expect(h.err()).toMatch(/No package\.json, deno\.json, mise tasks, Gradle or Maven build found/)
   })
 
   it('says so when there are no scripts', async () => {
@@ -561,5 +561,46 @@ describe.skipIf(process.platform === 'win32')('Gradle builds', () => {
     const h = await harness(root, { tty: false })
     await main(['--list'], h.io)
     expect(h.out()).toBe('build\tvite build\tnpm\nbuild\tbuild\tgradle\nrun\trun\tgradle\n')
+  })
+})
+
+describe('Maven builds', () => {
+  const plugin = (id: string) => `<build><plugins><plugin><artifactId>${id}</artifactId></plugin></plugins></build>`
+  const build = () => makeProject({
+    'pom.xml': '<project><artifactId>root</artifactId><packaging>pom</packaging><modules><module>lib</module><module>app</module></modules></project>',
+    'lib/pom.xml': '<project><artifactId>lib</artifactId></project>',
+    'app/pom.xml': `<project><artifactId>app</artifactId>${plugin('micronaut-maven-plugin')}</project>`,
+    'app/src/main/java/.keep': '',
+    mvnw: '',
+  })
+
+  it('runs a phase combination by its full name', async () => {
+    const root = await build()
+    const h = await harness(root)
+    expect(await main(['clean', 'install'], h.io)).toBe(0)
+    expect(h.runs).toEqual([{ command: { bin: './mvnw', args: ['clean', 'install'] }, cwd: root }])
+  })
+
+  it("runs a module's goal from the root, building what it depends on", async () => {
+    const root = await build()
+    const h = await harness(root)
+    expect(await main(['mn:run'], h.io)).toBe(0)
+    expect(h.err()).toBe('› ./mvnw -pl app -am mn:run\n')
+  })
+
+  it('hands the shell a line that works from where you are', async () => {
+    const root = await build()
+    const file = join(await makeProject({}), 'cmd')
+    const h = await harness(join(root, 'app/src/main/java'), { env: { HOP_CMD_FILE: file } })
+    expect(await main(['mn:run', '--', '-Dmn.watch=false'], h.io)).toBe(0)
+    expect(await readFile(file, 'utf8')).toBe('../../../../mvnw -f ../../../.. -pl app -am mn:run -Dmn.watch=false\n')
+  })
+
+  it('lists module goals labelled with their module', async () => {
+    const root = await build()
+    const h = await harness(root, { tty: false })
+    await main(['--list'], h.io)
+    expect(h.out()).toContain('mn:run\t-pl app -am mn:run\tapp\n')
+    expect(h.out()).toContain('clean install\tclean install\n')
   })
 })

@@ -31,7 +31,7 @@ describe('loadProject', () => {
 
   it('fails clearly when there is no package.json anywhere above', async () => {
     const dir = await makeProject({ 'empty/.keep': '' })
-    await expect(loadProject(join(dir, 'empty'))).rejects.toThrow(/No package\.json, deno\.json, mise tasks or Gradle build found/)
+    await expect(loadProject(join(dir, 'empty'))).rejects.toThrow(/No package\.json, deno\.json, mise tasks, Gradle or Maven build found/)
   })
 
   describe('hidden scripts', () => {

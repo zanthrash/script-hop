@@ -33,7 +33,7 @@ export interface IO {
 const HELP = `Usage: hop [query] [options] [-- args]
 
 Pick a script or task with fuzzy search; most-used ones come first. Reads package.json,
-deno.json, mise tasks and Gradle builds.
+deno.json, mise tasks, Gradle and Maven builds.
 
   hop                 open the picker
   hop <query>         run the script named <query>, or open the picker filtered by it

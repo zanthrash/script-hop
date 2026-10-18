@@ -180,6 +180,7 @@ src/
     node.ts       package.json scripts + deno.json tasks: PM detection, workspaces, hooks
     mise.ts       mise tasks, via `mise tasks --json`
     gradle.ts     Gradle tasks, via an init script; cached per build
+    maven.ts      Maven phases and plugin goals, read from pom.xml files
   fs.ts           file helpers shared by sources (exists, findUp, readJson)
   rank.ts         frecency + fuzzy combination (pure)
   history.ts      load/save/prune history file
@@ -192,7 +193,7 @@ scripts/
   homebrew-formula.ts   formula for zanthrash/homebrew-tap, from release checksums
 ```
 
-A **task source** finds its own nearest project from where hop starts and returns tasks; each task records its **runner** (`pnpm`, `mise`, `gradle`, later `maven`), and the command to run it is built from that runner, not from one project-wide package manager. That's what lets one list mix runners. New runners are new files in `src/sources/`.
+A **task source** finds its own nearest project from where hop starts and returns tasks; each task records its **runner** (`pnpm`, `mise`, `gradle`, `maven`), and the command to run it is built from that runner, not from one project-wide package manager. That's what lets one list mix runners. New runners are new files in `src/sources/`.
 
 ## Status and next steps
 
@@ -202,10 +203,13 @@ _Updated 2026-10-18. Keep this section current; it's the hand-off point between 
 
 **Released:** 0.8.0 (Gradle builds). Releases are fully automatic: npm → GitHub release with 4 executables → tap formula updated by CI; `brew upgrade script-hop` verified for 0.7.0 and 0.8.0.
 
+**In progress:** step 5, Maven (0.9.0): built and tested (see "Maven" below), waiting to be pushed and released.
+
 **Next:**
-1. Try 0.8.0 on a real Micronaut/Gradle project of the user's; fix what turns up.
-2. **Step 5, Maven (0.9.0)**: design below under "Maven"; the plugin table starts with Micronaut `mn:run`, the user's main goal. Get Java/Maven via mise (`mise exec java@21 maven@3 -- …`), not sdkman, and verify every command form against real builds, as was done for Gradle.
-3. Later: the "Future" list at the end.
+1. Release 0.9.0; the user tries Gradle and Maven support on their real Micronaut projects; fix what turns up.
+2. Then the "Future" list at the end: the v2 plan (steps 1–5) is complete with 0.9.0.
+
+Testing JVM builds: Java, Gradle and Maven via mise (`mise exec java@25 maven@3.9.16 gradle@9 -- …`; Micronaut 5 needs Java 25), not sdkman.
 
 **How releases go:** add a changeset → push → CI must be green on `main` → merge the "Release: version packages" PR. Release PRs opened by the bot don't run CI themselves (needs approval), so check `main`'s CI before merging. npm can take a minute to show a new version.
 
@@ -217,7 +221,7 @@ Agreed 2026-10-17. Built in this order, each step releasable on its own:
 2. **Task-runner abstraction** (no user-visible change): done
 3. **mise tasks** (0.7.0): done
 4. **Gradle** (0.8.0): done
-5. **Maven** (0.9.0): next
+5. **Maven** (0.9.0): built
 
 ### Distribution
 
@@ -264,10 +268,14 @@ A project can have several runners; their tasks are merged into one list.
 - Failure (broken build, no JDK, offline first run): other runners still show; one line explains, with Gradle's "What went wrong" line or else the first thing it printed (`couldn't read Gradle tasks (exit 1: ERROR: JAVA_HOME is not set…); run "./gradlew tasks" to see why`); the last good list is used if there is one (`Showing the list from <date>`); failures are never cached, so the next run asks again.
 - History keys use the Gradle path (`@gradle::app:run`, `@gradle:build`), since every Gradle task runs from the build root.
 
-### Maven
+### Maven (built, 0.9.0)
 
-- Read from `pom.xml` directly (no Maven invocation): lifecycle phases (`clean`, `validate`, `compile`, `test`, `package`, `verify`, `install`, `deploy`, `site`), common combinations (`clean install`, `clean verify`, `clean package`), and goals of well-known plugins found in the POM from a built-in table, starting with Micronaut (`mn:run`), then Spring Boot, Quarkus, exec, jib, flyway and jetty, filled from each plugin's docs.
-- Later: user-defined commands per project (e.g. `.hop.toml`), for any runner.
+- `sources/maven.ts`. Read from `pom.xml` files directly with `fast-xml-parser` (no Maven invocation, so no cache needed): lifecycle phases (`clean`, `validate`, `compile`, `test`, `package`, `verify`, `install`, `deploy`, `site`), common combinations (`clean install`, `clean verify`, `clean package`; run by full name, `hop clean install`), and day-to-day goals of well-known plugins in `<build><plugins>` (own or inherited from a parent POM in the build; pluginManagement alone doesn't count), from a built-in table: Micronaut, Spring Boot, Quarkus, exec, Jib, Flyway, Jetty (any `jetty(-eeN)-maven-plugin`). Goal names come from each plugin's `mvn help:describe`. Left out on purpose: lifecycle-bound goals, and `flyway:clean` (drops every database object, and would sit next to the `clean` phase in the picker).
+- The reactor root: from the nearest `pom.xml`, climb while the folder above lists this one in `<modules>` (or Maven 4's `<subprojects>`). A POM its parent folder doesn't list is its own build. `./mvnw` at the root if present, else `mvn`.
+- Checked against a real multi-module Micronaut 5 build (aggregator root, `lib`, `app` depending on `lib`, never installed): `-pl app mn:run` and `-f ../pom.xml -pl app mn:run` (the forms first planned) fail to resolve `lib`; `-pl app -am mn:run` builds `lib` and runs only the app. But `-am` also runs a goal in every upstream module, the parent POM included: `-pl app -am exec:java` fails there. So `-am` is used for phases and for plugins checked to skip modules they don't apply to (Micronaut); other goals run with plain `-pl <module>`, Maven's documented form, which needs the module's dependencies installed.
+- Micronaut 5's Maven plugin needs Java 25 (class file 69); on Java 21 it fails Maven with an obscure `TypeNotPresentException` before any goal runs. Not hop's to fix; worth knowing when testing.
+- History keys: `@maven:<module>/<name>` for a module's tasks, `@maven:<name>` for the build's.
+- Later: user-defined commands per project (e.g. `.hop.toml`), for any runner; more plugins once checked against real builds (and whether they're safe with `-am`).
 
 ### Multi-module JVM builds
 
@@ -277,7 +285,7 @@ Mirrors Node workspaces, adjusted to how Gradle treats names (checked with `--dr
 - **In a module:** that module's tasks, run by path (`../gradlew :app:test`), plus the root's tasks the module doesn't have, labelled `(root)` and run from the root project dir (`../gradlew -p .. run`; without `-p` Gradle would run only the current module's). Root tasks the module also has (`test (root)` next to `test`) were too noisy (every task twice) and aren't how Gradle users think in a module, so they only come with `--all`. This differs from Node workspaces, where root scripts always show.
 - **`--all`:** also every other module's tasks, labelled with the module path (`test (lib)`, `run (services:api)`).
 - Every task runs from the build root through its wrapper; the shell handoff spells the wrapper's path from where you are (`../../gradlew :app:run`), so lines replay from history in the same folder. Module paths work from any folder of the build. All forms were replayed from root, module and nested folders against a real wrapper build.
-- Maven (not built yet): `./mvnw -pl api mn:run` / `../mvnw -f ../pom.xml -pl api mn:run`, to be checked against real builds the same way.
+- Maven: at the root, the build's phases (`./mvnw clean install`) plus each module's plugin goals labelled with the module (`./mvnw -pl app -am mn:run`), since a module's goal can't run build-wide; in a module, its phases and goals (`../mvnw -f .. -pl app -am test`), plus other modules' goals it doesn't have; `--all` adds the build's phases and every module's tasks. All forms replayed from root, module and nested folders against the real build.
 
 ## Future
 

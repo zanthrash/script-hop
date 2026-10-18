@@ -76,4 +76,11 @@ describe('historyKey', () => {
     expect(historyKey(gradle(':lib:run'))).toBe('@gradle::lib:run')
     expect(historyKey(gradle('build'))).toBe('@gradle:build')
   })
+
+  it('keys Maven module tasks by module, since they all run from the build root', () => {
+    const maven = (name: string, module?: string) => ({ name, runner: 'maven', source: 'maven', maven: { module } })
+    expect(historyKey(maven('mn:run', 'app'))).toBe('@maven:app/mn:run')
+    expect(historyKey(maven('mn:run', 'services/api'))).toBe('@maven:services/api/mn:run')
+    expect(historyKey(maven('clean install'))).toBe('@maven:clean install')
+  })
 })
