@@ -108,10 +108,10 @@ describe('Maven source', () => {
       expect(found?.dir).toBe(root)
       const goals = found!.tasks.filter((t) => t.name.includes(':'))
       expect(summary(goals)).toEqual([
-        ['mn:dockerfile', 'package', 'app', '-pl app -am mn:dockerfile'],
-        ['mn:run', 'package', 'app', '-pl app -am mn:run'],
+        ['mn:dockerfile', 'package', 'app', '-pl :app -am mn:dockerfile'],
+        ['mn:run', 'package', 'app', '-pl :app -am mn:run'],
       ])
-      expect(goals.find((t) => t.name === 'mn:run')?.maven).toEqual({ goals: ['mn:run'], module: 'app', alsoMake: true, wrapper: true })
+      expect(goals.find((t) => t.name === 'mn:run')?.maven).toEqual({ goals: ['mn:run'], module: ':app', alsoMake: true, wrapper: true })
       expect(found!.tasks.filter((t) => t.scope === 'local').map((t) => t.command).sort()).toEqual([...PHASES, ...COMBOS].sort())
     })
 
@@ -121,16 +121,16 @@ describe('Maven source', () => {
       expect(found?.dir).toBe(join(root, 'app'))
       expect(found?.root).toBe(root)
       expect(found!.tasks.every((t) => t.scope === 'local' && t.cwd === root)).toBe(true)
-      expect(found!.tasks.find((t) => t.name === 'mn:run')?.command).toBe('-pl app -am mn:run')
-      expect(found!.tasks.find((t) => t.name === 'test')?.maven).toEqual({ goals: ['test'], module: 'app', alsoMake: true, wrapper: true })
+      expect(found!.tasks.find((t) => t.name === 'mn:run')?.command).toBe('-pl :app -am mn:run')
+      expect(found!.tasks.find((t) => t.name === 'test')?.maven).toEqual({ goals: ['test'], module: ':app', alsoMake: true, wrapper: true })
     })
 
     it("in a module without a goal: other modules' goals", async () => {
       const root = await multiModule()
       const found = await mavenSource.load(join(root, 'lib'), {})
       expect(summary(found!.tasks.filter((t) => t.scope !== 'local'))).toEqual([
-        ['mn:dockerfile', 'package', 'app', '-pl app -am mn:dockerfile'],
-        ['mn:run', 'package', 'app', '-pl app -am mn:run'],
+        ['mn:dockerfile', 'package', 'app', '-pl :app -am mn:dockerfile'],
+        ['mn:run', 'package', 'app', '-pl :app -am mn:run'],
       ])
     })
 
@@ -146,14 +146,14 @@ describe('Maven source', () => {
         'pom.xml': pom({ artifactId: 'demo-parent', packaging: 'pom', modules: ['lib', 'app'], plugins: ['flyway-maven-plugin'] }),
       })
       const found = await mavenSource.load(join(root, 'lib'), {})
-      expect(found!.tasks.find((t) => t.name === 'flyway:migrate')?.command).toBe('-pl lib flyway:migrate')
+      expect(found!.tasks.find((t) => t.name === 'flyway:migrate')?.command).toBe('-pl :lib flyway:migrate')
     })
 
     it("runs other plugins' goals without -am, which would run them in every upstream module", async () => {
       const root = await multiModule({ 'app/pom.xml': pom({ artifactId: 'app', parent: 'demo-parent', plugins: ['exec-maven-plugin'] }) })
       const run = (await mavenSource.load(join(root, 'app'), {}))!.tasks.find((t) => t.name === 'exec:java')
-      expect(run?.command).toBe('-pl app exec:java')
-      expect(run?.maven).toEqual({ goals: ['exec:java'], module: 'app', wrapper: true })
+      expect(run?.command).toBe('-pl :app exec:java')
+      expect(run?.maven).toEqual({ goals: ['exec:java'], module: ':app', wrapper: true })
     })
 
     it('finds nested modules and Maven 4 subprojects', async () => {
@@ -163,10 +163,15 @@ describe('Maven source', () => {
         'services/api/pom.xml': pom({ artifactId: 'api', parent: 'services', plugins: ['micronaut-maven-plugin'] }),
       })
       const atRoot = await mavenSource.load(root, {})
-      expect(atRoot!.tasks.find((t) => t.name === 'mn:run')?.command).toBe('-pl services/api -am mn:run')
+      expect(atRoot!.tasks.find((t) => t.name === 'mn:run')?.command).toBe('-pl :api -am mn:run')
       const inApi = await mavenSource.load(join(root, 'services/api'), {})
       expect(inApi?.dir).toBe(join(root, 'services/api'))
       expect(inApi!.tasks.find((t) => t.name === 'mn:run')?.scope).toBe('local')
+    })
+
+    it("selects a module by its path when its artifactId isn't plain text", async () => {
+      const root = await multiModule({ 'app/pom.xml': pom({ artifactId: '${app.name}', parent: 'demo-parent', plugins: ['micronaut-maven-plugin'] }) })
+      expect((await mavenSource.load(root, {}))!.tasks.find((t) => t.name === 'mn:run')?.command).toBe('-pl app -am mn:run')
     })
 
     it('treats a POM its parent folder does not list as its own build', async () => {

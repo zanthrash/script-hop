@@ -146,7 +146,7 @@ describe.skipIf(!hasMaven)('built hop with Maven', { timeout: 300_000 }, () => {
   it("builds a module with the modules it depends on, from inside it", async () => {
     const root = await mavenBuild()
     const result = await hop(join(root, 'app/src'), ['compile', '--', '-B', '-q'])
-    expect(result.stderr).toContain('› mvn -pl app -am compile -B -q')
+    expect(result.stderr).toContain('› mvn -pl :app -am compile -B -q')
     // on failure, show what Maven said
     expect(result.code, result.stdout + result.stderr).toBe(0)
   })

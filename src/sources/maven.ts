@@ -18,6 +18,12 @@ interface Pom {
 /** One project of the reactor: the root (`path` '') or a module (`path` 'app', 'services/api'). */
 export interface MavenProject {
   path: string
+  /**
+   * How `-pl` selects it: `:artifactId`. Not the path, which Maven failed to match on
+   * Windows (temp folders under 8.3 short names); the path is the fallback when the
+   * artifactId is missing or a ${property}.
+   */
+  selector: string
   dir: string
   packaging: string
   /** Its own build plugins plus those inherited from parent POMs in the build. */
@@ -143,7 +149,7 @@ function goalsFor(project: MavenProject): Definition[] {
  * Tasks for a directory in a Maven build, mirroring Gradle builds and Node workspaces.
  * At the root, the build's phases (`./mvnw clean install`, across every module), plus each
  * module's plugin goals, labelled with the module, since those only make sense for it. In
- * a module, its phases and goals, run with `-pl <module>`, plus `-am` where safe so the
+ * a module, its phases and goals, run with `-pl :<artifactId>`, plus `-am` where safe so the
  * modules it depends on are built too (without it, Maven looks for them in the local
  * repository and fails if they were never installed), plus other modules' goals it
  * doesn't have. With `all`,
@@ -151,7 +157,7 @@ function goalsFor(project: MavenProject): Definition[] {
  */
 export function tasksFromReactor(projects: MavenProject[], root: string, cwd: string, opts: LoadOptions, wrapper: boolean): SourceResult {
   const make = (def: Definition, project: MavenProject, scope: Task['scope']): Task => {
-    const module = project.path || undefined
+    const module = project.path ? project.selector : undefined
     const alsoMake = !!module && def.alsoMake
     return {
       name: def.name,
@@ -160,7 +166,7 @@ export function tasksFromReactor(projects: MavenProject[], root: string, cwd: st
       description: def.description,
       source: 'maven',
       scope,
-      ...(scope === 'package' && module ? { package: module } : {}),
+      ...(scope === 'package' && project.path ? { package: project.path } : {}),
       cwd: root,
       maven: { goals: def.goals, ...(module ? { module } : {}), ...(alsoMake ? { alsoMake } : {}), wrapper },
     }
@@ -242,13 +248,12 @@ async function readReactor(root: string): Promise<MavenProject[]> {
     return [...pom.plugins, ...pluginsOf(parentDir, parent, seen)]
   }
 
-  return [...poms].map(([dir, pom]) => ({
-    // forward slashes: it's passed to -pl and shown as a label
-    path: relative(root, dir).split(sep).join('/'),
-    dir,
-    packaging: pom.packaging,
-    plugins: pluginsOf(dir, pom),
-  }))
+  return [...poms].map(([dir, pom]) => {
+    // forward slashes: it's shown as a label, and passed to -pl as a fallback
+    const path = relative(root, dir).split(sep).join('/')
+    const selector = pom.artifactId && !pom.artifactId.includes('$') ? `:${pom.artifactId}` : path
+    return { path, selector, dir, packaging: pom.packaging, plugins: pluginsOf(dir, pom) }
+  })
 }
 
 /** A module (or parent relativePath) entry names a directory, or a POM file in one. */

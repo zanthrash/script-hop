@@ -184,11 +184,11 @@ Multi-module builds work like workspaces:
 | Where you are | What's listed | Runs as |
 |---|---|---|
 | The build's root | Phases for the whole build | `./mvnw clean install` |
-| | plus each module's plugin goals, labelled with the module | `./mvnw -pl app -am mn:run` |
-| In a module (`app/src/…`) | That module's phases and goals | `../../mvnw -f ../.. -pl app -am test` |
+| | plus each module's plugin goals, labelled with the module | `./mvnw -pl :app -am mn:run` |
+| In a module (`app/src/…`) | That module's phases and goals | `../../mvnw -f ../.. -pl :app -am test` |
 | With `-a` | Also the build's phases and every module's tasks | |
 
-`-am` makes Maven build the modules `app` depends on first, so it works in a fresh checkout. Plugin goals other than Micronaut's run with plain `-pl app`, because with `-am` Maven would run the goal in those other modules too, where it usually fails; run `install` once first if `app` depends on other modules.
+`-am` makes Maven build the modules `app` depends on first, so it works in a fresh checkout. Modules are selected by artifactId (`:app`). Plugin goals other than Micronaut's run with plain `-pl :app`, because with `-am` Maven would run the goal in those other modules too, where it usually fails; run `install` once first if `app` depends on other modules.
 
 ### Hidden scripts
 

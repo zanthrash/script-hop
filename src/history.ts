@@ -92,7 +92,7 @@ type Keyed = { name: string; runner: string; source: string; gradle?: { target: 
  * bare name, as they always have (so history survives switching npm <-> pnpm); other
  * runners are prefixed, so `build (mise)` and `build (pnpm)` in one folder stay apart.
  * Gradle and Maven tasks all run from the build root, so they're keyed by Gradle path
- * (`:app:run`) or Maven module (`app/mn:run`).
+ * (`:app:run`) or Maven module (`:app/mn:run`).
  */
 export function historyKey(task: Keyed): string {
   if (task.source === 'pkg' || task.source === 'deno') return task.name

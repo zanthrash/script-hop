@@ -585,7 +585,7 @@ describe('Maven builds', () => {
     const root = await build()
     const h = await harness(root)
     expect(await main(['mn:run'], h.io)).toBe(0)
-    expect(h.err()).toBe('› ./mvnw -pl app -am mn:run\n')
+    expect(h.err()).toBe('› ./mvnw -pl :app -am mn:run\n')
   })
 
   it('hands the shell a line that works from where you are', async () => {
@@ -593,14 +593,14 @@ describe('Maven builds', () => {
     const file = join(await makeProject({}), 'cmd')
     const h = await harness(join(root, 'app/src/main/java'), { env: { HOP_CMD_FILE: file } })
     expect(await main(['mn:run', '--', '-Dmn.watch=false'], h.io)).toBe(0)
-    expect(await readFile(file, 'utf8')).toBe('../../../../mvnw -f ../../../.. -pl app -am mn:run -Dmn.watch=false\n')
+    expect(await readFile(file, 'utf8')).toBe('../../../../mvnw -f ../../../.. -pl :app -am mn:run -Dmn.watch=false\n')
   })
 
   it('lists module goals labelled with their module', async () => {
     const root = await build()
     const h = await harness(root, { tty: false })
     await main(['--list'], h.io)
-    expect(h.out()).toContain('mn:run\t-pl app -am mn:run\tapp\n')
+    expect(h.out()).toContain('mn:run\t-pl :app -am mn:run\tapp\n')
     expect(h.out()).toContain('clean install\tclean install\n')
   })
 })
