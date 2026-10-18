@@ -1,5 +1,11 @@
 # script-hop
 
+## 0.7.0
+
+### Minor Changes
+
+- [`4b20c88`](https://github.com/zanthrash/script-hop/commit/4b20c8816032c507009a6eeed135b48a376ada39) Thanks [@zanthrash](https://github.com/zanthrash)! - Add mise tasks. Tasks from your project's `mise.toml` or `.mise/tasks/` are listed alongside package.json scripts and run with `mise run`. In projects that mix runners, each task is labelled with its runner (`build (mise)`), the runner name is searchable, and a name defined by two runners opens the picker unless you clearly use one of them more.
+
 ## 0.6.0
 
 ### Minor Changes
