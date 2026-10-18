@@ -191,14 +191,30 @@ scripts/
 
 A **task source** finds its own nearest project from where hop starts and returns tasks; each task records its **runner** (`pnpm`, later `mise`, `gradle`, `maven`), and the command to run it is built from that runner, not from one project-wide package manager. That's what lets one list mix runners. New runners are new files in `src/sources/`.
 
+## Status and next steps
+
+_Updated 2026-10-18. Keep this section current; it's the hand-off point between work sessions._
+
+**Goal:** `hop` becomes one fast picker for every task runner in a project, installable without Node. v1 (Node runners, frecency, fuzzy search, shell integration for fish/zsh/bash, `--all` workspaces) is shipped. v2 adds non-Node runners (mise, then the JVM: Gradle and Maven) and native installs (Homebrew).
+
+**Released:** 0.6.0 (standalone executables via `bun build --compile`, Homebrew tap `zanthrash/tap/script-hop`). 0.7.0 (mise tasks) is in release PR #8, CI green, waiting to be merged; the `HOMEBREW_TAP_TOKEN` secret is now set, so it should be the first fully automatic release (npm → GitHub release with 4 executables → tap formula).
+
+**Next:**
+1. After PR #8 merges: watch the Release workflow end to end, confirm the tap formula updated itself, then `brew upgrade script-hop` and check `hop --version` is 0.7.0.
+2. **Step 4, Gradle (0.8.0)**: design below under "Gradle" and "Multi-module JVM builds". Get Java/Gradle via mise (`mise exec java@21 gradle@8 -- …`), not sdkman. Verify every command form against real builds (wrapper from root and subfolders, `:module:task`).
+3. **Step 5, Maven (0.9.0)**: design below under "Maven"; the plugin table starts with Micronaut `mn:run`, the user's main goal.
+4. Later: the "Future" list at the end.
+
+**How releases go:** add a changeset → push → CI must be green on `main` → merge the "Release: version packages" PR. Release PRs opened by the bot don't run CI themselves (needs approval), so check `main`'s CI before merging. npm can take a minute to show a new version.
+
 ## v2: beyond Node, and native installs
 
 Agreed 2026-10-17. Built in this order, each step releasable on its own:
 
-1. **Standalone executable + Homebrew tap** (0.6.0)
-2. **Task-runner abstraction** (no user-visible change)
-3. **mise tasks** (0.7.0)
-4. **Gradle** (0.8.0)
+1. **Standalone executable + Homebrew tap** (0.6.0): done
+2. **Task-runner abstraction** (no user-visible change): done
+3. **mise tasks** (0.7.0): done, release PR #8
+4. **Gradle** (0.8.0): next
 5. **Maven** (0.9.0)
 
 ### Distribution
