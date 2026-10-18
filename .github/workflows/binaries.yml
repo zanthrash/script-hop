@@ -71,6 +71,6 @@ jobs:
           echo "archive=$archive" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.target }}
+          name: hop-${{ matrix.target }}
           path: ${{ steps.package.outputs.archive }}
           if-no-files-found: error

@@ -140,8 +140,10 @@ jobs:
         with:
           node-version: 24
           package-manager-cache: false
+      # only the executables: the run also has changesets' own artifacts
       - uses: actions/download-artifact@v8
         with:
+          pattern: hop-*
           path: assets
           merge-multiple: true
       - name: Checksums
@@ -150,7 +152,7 @@ jobs:
       - name: Attach to the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "v${{ needs.publish.outputs.version }}" assets/* --clobber --repo "${{ github.repository }}"
+        run: gh release upload "v${{ needs.publish.outputs.version }}" assets/hop-v*.tar.gz assets/checksums.txt --clobber --repo "${{ github.repository }}"
 
       - name: Generate the formula
         run: node scripts/homebrew-formula.ts "${{ needs.publish.outputs.version }}" assets/checksums.txt > script-hop.rb && cat script-hop.rb
