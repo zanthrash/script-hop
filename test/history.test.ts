@@ -1,7 +1,7 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { openHistory } from '../src/history.ts'
+import { historyKey, openHistory } from '../src/history.ts'
 import { makeProject } from './helpers.ts'
 
 const DAY = 24 * 60 * 60 * 1000
@@ -57,5 +57,23 @@ describe('history', () => {
     await (await openHistory(file)).record('/repo', 'dev', now)
     expect(JSON.parse(await readFile(file, 'utf8'))).toHaveProperty(['/repo', 'dev'])
     expect(await readdir(join(file, '..'))).toEqual(['history.json'])
+  })
+})
+
+describe('historyKey', () => {
+  it('keeps the bare name for package.json and deno.json scripts', () => {
+    expect(historyKey({ name: 'dev', runner: 'pnpm', source: 'pkg' })).toBe('dev')
+    expect(historyKey({ name: 'dev', runner: 'deno', source: 'deno' })).toBe('dev')
+  })
+
+  it('prefixes other runners', () => {
+    expect(historyKey({ name: 'lint', runner: 'mise', source: 'mise' })).toBe('@mise:lint')
+  })
+
+  it('keys Gradle tasks by their Gradle path, since they all run from the build root', () => {
+    const gradle = (target: string) => ({ name: target.split(':').pop()!, runner: 'gradle', source: 'gradle', gradle: { target, wrapper: true } })
+    expect(historyKey(gradle(':app:run'))).toBe('@gradle::app:run')
+    expect(historyKey(gradle(':lib:run'))).toBe('@gradle::lib:run')
+    expect(historyKey(gradle('build'))).toBe('@gradle:build')
   })
 })

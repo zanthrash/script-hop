@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { chmod, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { main, type IO } from '../src/app.ts'
@@ -25,6 +25,7 @@ async function harness(cwd: string, opts: {
   exitCode?: number
   historyFile?: string
   env?: Record<string, string>
+  cacheDir?: string
 } = {}): Promise<Harness> {
   let out = ''
   let err = ''
@@ -42,6 +43,7 @@ async function harness(cwd: string, opts: {
       isTTY: opts.tty ?? true,
       env: opts.env ?? {},
       historyFile,
+      cacheDir: opts.cacheDir,
       stdout: (s) => { out += s },
       stderr: (s) => { err += s },
       pick: async (search, query) => {
@@ -200,7 +202,7 @@ describe('errors and edge cases', () => {
   it('fails clearly without a package.json', async () => {
     const h = await harness(join(await makeProject({ 'x/.keep': '' }), 'x'))
     expect(await main([], h.io)).toBe(1)
-    expect(h.err()).toMatch(/No package\.json found/)
+    expect(h.err()).toMatch(/No package\.json, deno\.json, mise tasks or Gradle build found/)
   })
 
   it('says so when there are no scripts', async () => {
@@ -456,5 +458,108 @@ describe.skipIf(!hasMise)('several runners in one project', () => {
     await main(['build'], h.io)
     expect(h.picks).toEqual([])
     expect(h.runs[0]?.command).toEqual({ bin: 'mise', args: ['run', 'build'] })
+  })
+})
+
+// A stand-in for a build's gradlew: logs its arguments, then writes a fixed model to the
+// file hop names with -Dhop.out (or fails like Gradle when a `broken` file exists).
+const fakeGradlew = `#!/bin/sh
+here=$(cd "$(dirname "$0")" && pwd -P)
+echo "$*" >> "$here/gradle-calls.log"
+if [ -f "$here/nojava" ]; then
+  echo "ERROR: JAVA_HOME is not set and no 'java' command could be found in your PATH." >&2
+  exit 1
+fi
+if [ -f "$here/broken" ]; then
+  printf '\\n* What went wrong:\\nScript compilation error\\n' >&2
+  exit 1
+fi
+for a in "$@"; do case "$a" in -Dhop.out=*) out="\${a#-Dhop.out=}";; esac; done
+cat > "$out" <<JSON
+[{"path":":","dir":"$here","tasks":[{"name":"help","group":"help"}]},
+ {"path":":app","dir":"$here/app","tasks":[{"name":"run","group":"application","description":"Runs the app"},{"name":"build","group":"build"}]},
+ {"path":":lib","dir":"$here/lib","tasks":[{"name":"build","group":"build"}]}]
+JSON
+`
+
+describe.skipIf(process.platform === 'win32')('Gradle builds', () => {
+  async function gradleBuild(extra: Record<string, unknown> = {}) {
+    const root = await makeProject({
+      'settings.gradle': "include 'app', 'lib'\n",
+      gradlew: fakeGradlew,
+      'app/build.gradle': '',
+      'app/src/main/.keep': '',
+      'lib/build.gradle': '',
+      ...extra,
+    })
+    await chmod(join(root, 'gradlew'), 0o755)
+    return root
+  }
+  const calls = async (root: string) => (await readFile(join(root, 'gradle-calls.log'), 'utf8')).trim().split('\n')
+
+  it('lists each task once at the root, without help tasks', async () => {
+    const root = await gradleBuild()
+    const h = await harness(root, { tty: false })
+    expect(await main(['--list'], h.io)).toBe(0)
+    expect(h.out()).toBe('build\tbuild\nrun\trun\n')
+    expect((await calls(root))[0]).toMatch(/-q --console=plain --no-configuration-cache --no-configure-on-demand --init-script \S+ -Dhop.out=\S+ hopTasks$/)
+  })
+
+  it("runs a module's task through the root wrapper", async () => {
+    const root = await gradleBuild()
+    const h = await harness(join(root, 'app/src/main'))
+    expect(await main(['run', '--', '--args=x'], h.io)).toBe(0)
+    expect(h.runs).toEqual([{ command: { bin: './gradlew', args: [':app:run', '--args=x'] }, cwd: root }])
+    expect(h.err()).toBe('› ./gradlew :app:run --args=x\n')
+  })
+
+  it('hands the shell a line that works from where you are', async () => {
+    const root = await gradleBuild()
+    const file = join(await makeProject({}), 'cmd')
+    const h = await harness(join(root, 'app/src/main'), { env: { HOP_CMD_FILE: file } })
+    expect(await main(['run'], h.io)).toBe(0)
+    expect(await readFile(file, 'utf8')).toBe('../../../gradlew :app:run\n')
+  })
+
+  it("runs a root task from a module that doesn't have it", async () => {
+    const root = await gradleBuild()
+    const file = join(await makeProject({}), 'cmd')
+    const h = await harness(join(root, 'lib'), { env: { HOP_CMD_FILE: file } })
+    expect(await main(['run'], h.io)).toBe(0)
+    expect(await readFile(file, 'utf8')).toBe('../gradlew -p .. run\n')
+  })
+
+  it('caches the task list until a build file changes, and rereads with --refresh', async () => {
+    const root = await gradleBuild()
+    const cacheDir = await makeProject({})
+    for (const argv of [['--list'], ['--list'], ['--list', '--refresh']]) {
+      await main(argv, (await harness(root, { tty: false, cacheDir })).io)
+    }
+    expect(await calls(root)).toHaveLength(2)
+    await writeFile(join(root, 'lib/build.gradle'), "plugins { id 'java' }\n")
+    await main(['--list'], (await harness(root, { tty: false, cacheDir })).io)
+    expect(await calls(root)).toHaveLength(3)
+  })
+
+  it("still lists other runners' scripts when Gradle fails, and says why", async () => {
+    const root = await gradleBuild({ broken: '', 'package.json': { scripts: { lint: 'eslint .' } }, 'package-lock.json': '{}' })
+    const h = await harness(root, { tty: false })
+    expect(await main(['--list'], h.io)).toBe(0)
+    expect(h.out()).toBe('lint\teslint .\n')
+    expect(h.err()).toBe(`hop: couldn't read Gradle tasks (exit 1: Script compilation error); run "./gradlew tasks" to see why\n`)
+  })
+
+  it("says what's wrong when Gradle can't even start", async () => {
+    const root = await gradleBuild({ nojava: '' })
+    const h = await harness(root, { tty: false })
+    await main(['--list'], h.io)
+    expect(h.err()).toContain(`couldn't read Gradle tasks (exit 1: ERROR: JAVA_HOME is not set and no 'java' command could be found in your PATH.)`)
+  })
+
+  it('labels runners when a build also has package.json scripts', async () => {
+    const root = await gradleBuild({ 'package.json': { scripts: { build: 'vite build' } }, 'package-lock.json': '{}' })
+    const h = await harness(root, { tty: false })
+    await main(['--list'], h.io)
+    expect(h.out()).toBe('build\tvite build\tnpm\nbuild\tbuild\tgradle\nrun\trun\tgradle\n')
   })
 })

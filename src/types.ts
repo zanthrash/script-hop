@@ -1,8 +1,8 @@
 export const PMS = ['npm', 'pnpm', 'yarn', 'bun', 'deno'] as const
 export type PM = (typeof PMS)[number]
 
-/** What runs a task: a Node package manager, or mise (Gradle and Maven to come). */
-export type RunnerId = PM | 'mise'
+/** What runs a task: a Node package manager, mise or Gradle (Maven to come). */
+export type RunnerId = PM | 'mise' | 'gradle'
 
 export interface Task {
   name: string
@@ -11,7 +11,7 @@ export interface Task {
   command: string
   description?: string
   /** Which file the task is defined in. */
-  source: 'pkg' | 'deno' | 'mise'
+  source: 'pkg' | 'deno' | 'mise' | 'gradle'
   /**
    * Where the task comes from: the nearest package (`local`), the workspace root (`root`),
    * or, with `--all`, another workspace package (`package`).
@@ -23,6 +23,11 @@ export interface Task {
   cwd: string
   /** `pre<name>` / `post<name>` scripts the runner will run around this one, if any. */
   hooks?: { pre?: string; post?: string }
+  /**
+   * For Gradle tasks: what to ask Gradle for (`:app:run` for one module, `build` for every
+   * module that has it), and whether the build has its own `gradlew`.
+   */
+  gradle?: { target: string; wrapper: boolean }
 }
 
 export interface Project {
@@ -33,6 +38,8 @@ export interface Project {
   /** Workspace root above `dir`, if any. */
   root?: string
   tasks: Task[]
+  /** One-line problems worth telling the user about, e.g. a build Gradle couldn't read. */
+  warnings: string[]
 }
 
 export interface LoadOptions {
@@ -42,6 +49,12 @@ export interface LoadOptions {
   allScripts?: boolean
   /** Include the scripts of every workspace package. */
   all?: boolean
+  /** Where task lists that are slow to get (Gradle's) are cached; no caching without it. */
+  cacheDir?: string
+  /** Ignore cached task lists. */
+  refresh?: boolean
+  /** Show that something slow is happening; returns a function that ends it. */
+  progress?: (message: string) => () => void
 }
 
 /** What a task source found for the directory hop was started in. */
@@ -53,10 +66,11 @@ export interface SourceResult {
   tasks: Task[]
   /** For the Node source: the package manager in use. */
   pm?: PM
+  warnings?: string[]
 }
 
 /**
- * One kind of task definition (package.json scripts, and later mise, Gradle, Maven).
+ * One kind of task definition (package.json scripts, mise, Gradle, and later Maven).
  * Finds its own nearest project from `cwd`; resolves to undefined when there is none.
  */
 export interface TaskSource {

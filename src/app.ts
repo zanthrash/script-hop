@@ -1,8 +1,7 @@
 import { writeFile } from 'node:fs/promises'
-import { relative, sep } from 'node:path'
 import { parseArgs } from 'node:util'
 import pkg from '../package.json' with { type: 'json' }
-import { commandFor, toShell, type Command } from './command.ts'
+import { commandFor, handoffDir, toShell, type Command } from './command.ts'
 import { entryFor, frecency, historyKey, openHistory } from './history.ts'
 import { rank, type Ranked } from './rank.ts'
 import { isShell, SHELLS } from './shell.ts'
@@ -16,6 +15,10 @@ export interface IO {
   isTTY: boolean
   env: Record<string, string | undefined>
   historyFile: string
+  /** Where slow-to-read task lists (Gradle's) are cached; none if unset. */
+  cacheDir?: string
+  /** Show a spinner on stderr until the returned function is called. */
+  progress?: (message: string) => () => void
   stdout: (text: string) => void
   stderr: (text: string) => void
   /**
@@ -29,7 +32,8 @@ export interface IO {
 
 const HELP = `Usage: hop [query] [options] [-- args]
 
-Pick a package.json script with fuzzy search; most-used scripts come first.
+Pick a script or task with fuzzy search; most-used ones come first. Reads package.json,
+deno.json, mise tasks and Gradle builds.
 
   hop                 open the picker
   hop <query>         run the script named <query>, or open the picker filtered by it
@@ -40,7 +44,9 @@ Options:
   -a, --all           include the scripts of every workspace package
       --list          print scripts in ranked order and exit
       --pm <name>     use this package manager (${PMS.join(', ')}); also HOP_PM
-      --all-scripts   include lifecycle and pre/post hook scripts
+      --all-scripts   include lifecycle and pre/post hook scripts, and Gradle's
+                      ungrouped, help and build setup tasks
+      --refresh       read Gradle's task list again instead of using the cached one
       --reset-history forget all usage history
       --init <shell>  print shell integration (${Object.keys(SHELLS).join(', ')}) so chosen scripts
                       run in your shell and land in its history
@@ -73,6 +79,7 @@ function parse(argv: string[], env: IO['env']) {
         'all-scripts': { type: 'boolean' },
         all: { type: 'boolean', short: 'a' },
         'reset-history': { type: 'boolean' },
+        refresh: { type: 'boolean' },
         init: { type: 'string' },
         help: { type: 'boolean', short: 'h' },
         version: { type: 'boolean', short: 'v' },
@@ -127,7 +134,15 @@ async function hop(argv: string[], io: IO): Promise<number> {
     return 0
   }
 
-  const project = await loadProject(io.cwd, { pm: args.pm, allScripts: args['all-scripts'], all: args.all })
+  const project = await loadProject(io.cwd, {
+    pm: args.pm,
+    allScripts: args['all-scripts'],
+    all: args.all,
+    cacheDir: io.cacheDir,
+    refresh: args.refresh,
+    progress: io.isTTY ? io.progress : undefined,
+  })
+  for (const warning of project.warnings) io.stderr(`hop: ${warning}\n`)
   if (project.tasks.length === 0) {
     io.stderr(`No scripts in ${project.dir}\n`)
     return 0
@@ -212,11 +227,8 @@ async function hop(argv: string[], io: IO): Promise<number> {
     const handoff = io.env.HOP_CMD_FILE
     if (handoff) {
       // Shell integration: the wrapper function runs the command in the user's shell and
-      // adds it to history, so it must work as typed from here. Local scripts are found
-      // by the runner walking up; root and other packages' scripts need the directory.
-      // forward slashes: the line is for fish/zsh, and runners accept them on Windows too
-      const dir = task.scope !== 'local' ? relative(io.cwd, task.cwd).split(sep).join('/') || '.' : undefined
-      const line = toShell(commandFor(task, args.extraArgs, dir))
+      // adds it to history, so it must work as typed from here
+      const line = toShell(commandFor(task, args.extraArgs, handoffDir(task, io.cwd)))
       await writeFile(handoff, `${line}\n`)
       return 0
     }

@@ -56,11 +56,19 @@ jobs:
       - name: Install fish for the shell tests
         if: runner.os == 'macOS'
         run: brew install fish
-      # mise tasks are tested against a real mise (skipped where it isn't installed)
+      # mise tasks and Gradle builds are tested against the real tools
       - uses: jdx/mise-action@v5
         if: runner.os != 'Windows'
         with:
           install: false
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: 9.8.1
+          cache-disabled: true
       - name: Test the executable
         run: |
           build/hop --version

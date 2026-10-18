@@ -1,6 +1,7 @@
 import { constants } from 'node:os'
 import spawn from 'cross-spawn'
 import type { IO } from './app.ts'
+import { PMS } from './types.ts'
 
 const FORWARDED = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const
 
@@ -11,7 +12,9 @@ const FORWARDED = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const
  */
 export const exec: IO['exec'] = (command, cwd) =>
   new Promise((resolve) => {
-    const child = spawn(command.bin, command.args, { cwd, stdio: 'inherit' })
+    // a Gradle wrapper is a shell script; Windows runs its .bat twin
+    const bin = process.platform === 'win32' && /(^|\/)gradlew$/.test(command.bin) ? `${command.bin}.bat` : command.bin
+    const child = spawn(bin, command.args, { cwd, stdio: 'inherit' })
 
     // Ctrl-C reaches the child directly via the terminal's process group; forwarding
     // covers signals sent to hop alone (e.g. `kill`).
@@ -25,9 +28,10 @@ export const exec: IO['exec'] = (command, cwd) =>
     child.on('error', (error: NodeJS.ErrnoException) => {
       cleanup()
       if (error.code === 'ENOENT') {
-        process.stderr.write(
-          `hop: "${command.bin}" was not found. Install it, or run \`corepack enable\`, or pick another with --pm.\n`,
-        )
+        const hint = (PMS as readonly string[]).includes(command.bin)
+          ? ' Install it, or run `corepack enable`, or pick another with --pm.'
+          : ' Install it, or add it to your PATH.'
+        process.stderr.write(`hop: "${command.bin}" was not found.${hint}\n`)
         resolve(127)
       } else {
         process.stderr.write(`hop: ${error.message}\n`)

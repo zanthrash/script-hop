@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildCommand, commandFor, toShell } from '../src/command.ts'
+import { buildCommand, commandFor, handoffDir, toShell } from '../src/command.ts'
 
 describe('buildCommand', () => {
   it.each([
@@ -51,5 +51,51 @@ describe('commandFor', () => {
   it('uses the Node package manager for package.json scripts', () => {
     expect(commandFor({ runner: 'pnpm', name: 'dev' }, [], '../..'))
       .toEqual({ bin: 'pnpm', args: ['--dir', '../..', 'run', 'dev'] })
+  })
+})
+
+describe('commandFor with Gradle', () => {
+  const gradle = (target: string, wrapper = true) => ({ runner: 'gradle' as const, name: target.split(':').pop()!, gradle: { target, wrapper } })
+
+  it("runs through the build's wrapper from the root", () => {
+    expect(commandFor(gradle(':app:run'), [])).toEqual({ bin: './gradlew', args: [':app:run'] })
+    expect(commandFor(gradle('build'), [], '.')).toEqual({ bin: './gradlew', args: ['build'] })
+  })
+
+  it('passes extra args straight to Gradle', () => {
+    expect(commandFor(gradle(':app:test'), ['--tests', 'demo.*'])).toEqual({ bin: './gradlew', args: [':app:test', '--tests', 'demo.*'] })
+  })
+
+  it('reaches the wrapper from a subfolder; module paths need nothing else', () => {
+    expect(commandFor(gradle(':app:run'), [], '../..')).toEqual({ bin: '../../gradlew', args: [':app:run'] })
+  })
+
+  it('runs an all-module task from the root project dir, or Gradle would only run the current module', () => {
+    expect(commandFor(gradle('build'), [], '..')).toEqual({ bin: '../gradlew', args: ['-p', '..', 'build'] })
+  })
+
+  it('uses gradle from PATH when the build has no wrapper', () => {
+    expect(commandFor(gradle(':app:run', false), [])).toEqual({ bin: 'gradle', args: [':app:run'] })
+    expect(commandFor(gradle(':app:run', false), [], '..')).toEqual({ bin: 'gradle', args: [':app:run'] })
+    expect(commandFor(gradle('build', false), [], '..')).toEqual({ bin: 'gradle', args: ['-p', '..', 'build'] })
+  })
+})
+
+describe('handoffDir', () => {
+  const task = (over: Partial<Parameters<typeof handoffDir>[0]>) => ({ runner: 'pnpm' as const, scope: 'local' as const, cwd: '/r', ...over })
+
+  it('leaves local Node and mise tasks to the runner, which finds them by walking up', () => {
+    expect(handoffDir(task({ cwd: '/r' }), '/r/src')).toBeUndefined()
+    expect(handoffDir(task({ runner: 'mise' }), '/r/src')).toBeUndefined()
+  })
+
+  it('spells out the directory for root and package tasks', () => {
+    expect(handoffDir(task({ scope: 'root' }), '/r/packages/web')).toBe('../..')
+    expect(handoffDir(task({ scope: 'package', cwd: '/r/packages/api' }), '/r')).toBe('packages/api')
+  })
+
+  it('always gives Gradle tasks the way back to the build root', () => {
+    expect(handoffDir(task({ runner: 'gradle' }), '/r/app/src')).toBe('../..')
+    expect(handoffDir(task({ runner: 'gradle' }), '/r')).toBe('.')
   })
 })

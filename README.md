@@ -1,6 +1,6 @@
 # script-hop
 
-Fuzzy-find and run your project's scripts and tasks (package.json, deno.json, mise). The ones you use most are always at the top.
+Fuzzy-find and run your project's scripts and tasks (package.json, deno.json, mise, Gradle). The ones you use most are always at the top.
 
 ```
 $ hop
@@ -14,7 +14,7 @@ $ hop
 vite --port 3000
 ```
 
-Works with **npm, pnpm, yarn, bun and deno**, picking whichever your project uses. Inspired by [ntl](https://github.com/ruyadorno/ntl).
+Works with **npm, pnpm, yarn, bun and deno**, picking whichever your project uses, and with **mise** tasks and **Gradle** builds. Inspired by [ntl](https://github.com/ruyadorno/ntl).
 
 ## Install
 
@@ -83,7 +83,8 @@ Workspace-root scripts are saved with their directory spelled out (e.g. `pnpm --
 | `-a`, `--all` | Include the scripts of every workspace package |
 | `--list` | Print scripts in ranked order (`name<TAB>command`, plus a third column with the same labels as the picker: runner when mixed, `root`, package) and exit |
 | `--pm <name>` | Use this package manager: `npm`, `pnpm`, `yarn`, `bun` or `deno` |
-| `--all-scripts` | Include lifecycle scripts and pre/post hooks |
+| `--all-scripts` | Include lifecycle scripts and pre/post hooks, and Gradle's ungrouped, help and build setup tasks |
+| `--refresh` | Read Gradle's task list again instead of using the cached one |
 | `--reset-history` | Forget all usage history |
 | `--init <shell>` | Print shell integration for `fish`, `zsh` or `bash` |
 | `-h`, `--help` | Show help |
@@ -93,6 +94,8 @@ Workspace-root scripts are saved with their directory spelled out (e.g. `pnpm --
 |---|---|
 | `HOP_PM` | Same as `--pm` |
 | `HOP_HISTORY` | Where to keep usage history |
+| `HOP_CACHE` | Where to cache Gradle task lists |
+| `HOP_GRADLE_TIMEOUT` | Seconds to wait for Gradle to list tasks (default 300) |
 
 ## How it works
 
@@ -140,6 +143,25 @@ When a project mixes runners, each task is labelled with the one that runs it:
 ```
 
 The runner name is searchable (`mise b` finds `build (mise)`). If you type a name more than one runner defines, such as `hop build`, the picker opens so you can choose, unless you've clearly used one of them more, in which case that one runs.
+
+### Gradle
+
+In a Gradle build, `hop` lists the build's tasks and runs them through the build's `./gradlew` (or `gradle` from your PATH if there's no wrapper). It uses whichever Java your environment provides, exactly as typing `./gradlew` would.
+
+Gradle has to be asked for its tasks, since most come from plugins, so the first `hop` in a build shows `Reading Gradle tasks…` for a second or so (longer if the wrapper still has to download Gradle). The list is then cached until a build file changes (`*.gradle`, `*.gradle.kts`, `gradle.properties`, the version catalog, `buildSrc`), so after that `hop` is instant. If you change tasks some other way, `hop --refresh` reads them again.
+
+Tasks people run day to day are shown: anything with a group, like `build`, `test`, `run`, `clean`, `javadoc` or your own grouped tasks. Ungrouped tasks (`compileJava`, …) and the help and build-setup groups (`dependencies`, `wrapper`, …) come with `--all-scripts`.
+
+Multi-module builds work like workspaces:
+
+| Where you are | What's listed | Runs as |
+|---|---|---|
+| The build's root | Each task once, run in every module that has it | `./gradlew test` |
+| In a module (`app/src/…`) | That module's tasks | `../../gradlew :app:test` |
+| | plus the root's tasks the module doesn't have, labelled `(root)` | `../../gradlew -p ../.. run` |
+| With `-a` | Also every other module's tasks, e.g. `test (lib)` | `../../gradlew :lib:test` |
+
+If Gradle can't list the tasks (a broken build script, no Java), `hop` says why in one line, still shows your other scripts, and uses the last list it read if it has one.
 
 ### Hidden scripts
 

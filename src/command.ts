@@ -1,3 +1,4 @@
+import { relative, sep } from 'node:path'
 import type { PM, Task } from './tasks.ts'
 
 export interface Command {
@@ -17,14 +18,44 @@ const runArgs: Record<PM, (name: string, dir?: string) => string[]> = {
   deno: (name, dir) => ['task', ...(dir ? ['--cwd', dir] : []), name],
 }
 
-/** The command that runs `task`, optionally from another directory (for shell history). */
-export function commandFor(task: Pick<Task, 'runner' | 'name'>, extraArgs: string[], dir?: string): Command {
+/**
+ * The command that runs `task`, optionally from another directory (for shell history).
+ * `dir` is relative to where the command will be typed.
+ */
+export function commandFor(task: Pick<Task, 'runner' | 'name' | 'gradle'>, extraArgs: string[], dir?: string): Command {
+  if (task.runner === 'gradle') {
+    if (!task.gradle) throw new Error(`Gradle task "${task.name}" has no Gradle path`)
+    return gradleCommand(task.gradle, extraArgs, dir)
+  }
   if (task.runner === 'mise') {
     // `--` keeps flags meant for the task away from `mise run`'s own options
     const extra = extraArgs.length > 0 ? ['--', ...extraArgs] : []
     return { bin: 'mise', args: [...(dir ? ['--cd', dir] : []), 'run', task.name, ...extra] }
   }
   return buildCommand(task.runner, task.name, extraArgs, dir)
+}
+
+/**
+ * Gradle runs through the build root's wrapper. A module path (`:app:run`) means the same
+ * from any folder of the build; a bare name (`build`) means "in every module" only from the
+ * root, so from elsewhere `-p` points Gradle back at it. Each form was checked by hand.
+ */
+function gradleCommand({ target, wrapper }: NonNullable<Task['gradle']>, extraArgs: string[], dir?: string): Command {
+  const atRoot = !dir || dir === '.'
+  const bin = !wrapper ? 'gradle' : atRoot ? './gradlew' : `${dir}/gradlew`
+  const project = !atRoot && !target.startsWith(':') ? ['-p', dir] : []
+  return { bin, args: [...project, target, ...extraArgs] }
+}
+
+/**
+ * Directory to spell out when handing `task` to the user's shell from `from`, so the line
+ * works as typed there (and from history). Local Node and mise tasks need none: their
+ * runners find them by walking up. Gradle always needs the way back to the build root.
+ */
+export function handoffDir(task: Pick<Task, 'runner' | 'scope' | 'cwd'>, from: string): string | undefined {
+  if (task.scope === 'local' && task.runner !== 'gradle') return undefined
+  // forward slashes: the line is for fish/zsh/bash, and runners accept them on Windows too
+  return relative(from, task.cwd).split(sep).join('/') || '.'
 }
 
 export function buildCommand(pm: PM, name: string, extraArgs: string[], dir?: string): Command {

@@ -165,7 +165,7 @@ Read, in order: `hop.descriptions`, `ntl.descriptions`, `scripts-info` (package.
 | Build | tsdown → single bundled ESM file `dist/cli.mjs` (config is `.mjs`, loaded with `--config-loader native`) |
 | Tests | vitest; core logic as pure functions tested against fixture repos (one per PM + workspace layouts). Picker is a thin shell. |
 | Dev PM | pnpm |
-| CI | GitHub Actions, matrix ubuntu/macos/windows × Node 22/24 |
+| CI | GitHub Actions, matrix ubuntu/macos/windows × Node 22/24/26; real fish, zsh, mise, Java 21 and Gradle (8 and 9) where available |
 | Release | changesets, npm publish with provenance |
 
 ### Module layout
@@ -178,6 +178,8 @@ src/
   types.ts        Task, Project, TaskSource, RunnerId
   sources/
     node.ts       package.json scripts + deno.json tasks: PM detection, workspaces, hooks
+    mise.ts       mise tasks, via `mise tasks --json`
+    gradle.ts     Gradle tasks, via an init script; cached per build
   fs.ts           file helpers shared by sources (exists, findUp, readJson)
   rank.ts         frecency + fuzzy combination (pure)
   history.ts      load/save/prune history file
@@ -185,11 +187,12 @@ src/
   run.ts          spawn + signal forwarding
   picker.ts       @inquirer/search integration
   shell.ts        fish/zsh/bash wrappers for --init
+  spinner.ts      stderr spinner while a slow source (Gradle) is read
 scripts/
   homebrew-formula.ts   formula for zanthrash/homebrew-tap, from release checksums
 ```
 
-A **task source** finds its own nearest project from where hop starts and returns tasks; each task records its **runner** (`pnpm`, later `mise`, `gradle`, `maven`), and the command to run it is built from that runner, not from one project-wide package manager. That's what lets one list mix runners. New runners are new files in `src/sources/`.
+A **task source** finds its own nearest project from where hop starts and returns tasks; each task records its **runner** (`pnpm`, `mise`, `gradle`, later `maven`), and the command to run it is built from that runner, not from one project-wide package manager. That's what lets one list mix runners. New runners are new files in `src/sources/`.
 
 ## Status and next steps
 
@@ -197,13 +200,14 @@ _Updated 2026-10-18. Keep this section current; it's the hand-off point between 
 
 **Goal:** `hop` becomes one fast picker for every task runner in a project, installable without Node. v1 (Node runners, frecency, fuzzy search, shell integration for fish/zsh/bash, `--all` workspaces) is shipped. v2 adds non-Node runners (mise, then the JVM: Gradle and Maven) and native installs (Homebrew).
 
-**Released:** 0.6.0 (standalone executables via `bun build --compile`, Homebrew tap `zanthrash/tap/script-hop`). 0.7.0 (mise tasks) is in release PR #8, CI green, waiting to be merged; the `HOMEBREW_TAP_TOKEN` secret is now set, so it should be the first fully automatic release (npm → GitHub release with 4 executables → tap formula).
+**Released:** 0.7.0 (mise tasks), the first fully automatic release: npm → GitHub release with 4 executables → tap formula updated by CI. `brew upgrade script-hop` verified.
+
+**In progress:** step 4, Gradle (0.8.0): built and tested (see "Gradle" below), waiting to be pushed and released.
 
 **Next:**
-1. After PR #8 merges: watch the Release workflow end to end, confirm the tap formula updated itself, then `brew upgrade script-hop` and check `hop --version` is 0.7.0.
-2. **Step 4, Gradle (0.8.0)**: design below under "Gradle" and "Multi-module JVM builds". Get Java/Gradle via mise (`mise exec java@21 gradle@8 -- …`), not sdkman. Verify every command form against real builds (wrapper from root and subfolders, `:module:task`).
-3. **Step 5, Maven (0.9.0)**: design below under "Maven"; the plugin table starts with Micronaut `mn:run`, the user's main goal.
-4. Later: the "Future" list at the end.
+1. Release 0.8.0, then try it on a real Micronaut/Gradle project of the user's.
+2. **Step 5, Maven (0.9.0)**: design below under "Maven"; the plugin table starts with Micronaut `mn:run`, the user's main goal. Get Java/Maven via mise (`mise exec java@21 maven@3 -- …`), not sdkman, and verify every command form against real builds, as was done for Gradle.
+3. Later: the "Future" list at the end.
 
 **How releases go:** add a changeset → push → CI must be green on `main` → merge the "Release: version packages" PR. Release PRs opened by the bot don't run CI themselves (needs approval), so check `main`'s CI before merging. npm can take a minute to show a new version.
 
@@ -213,9 +217,9 @@ Agreed 2026-10-17. Built in this order, each step releasable on its own:
 
 1. **Standalone executable + Homebrew tap** (0.6.0): done
 2. **Task-runner abstraction** (no user-visible change): done
-3. **mise tasks** (0.7.0): done, release PR #8
-4. **Gradle** (0.8.0): next
-5. **Maven** (0.9.0)
+3. **mise tasks** (0.7.0): done
+4. **Gradle** (0.8.0): built
+5. **Maven** (0.9.0): next
 
 ### Distribution
 
@@ -252,13 +256,15 @@ A project can have several runners; their tasks are merged into one list.
 - Same name in several runners at the same level: the task with at least twice the frecency of the next runs; otherwise the picker (non-TTY: error naming the runners).
 - Tested against real mise with an isolated global config and trust settings; CI installs mise (`jdx/mise-action`) on Linux and macOS, including for the standalone executables.
 
-### Gradle
+### Gradle (built, 0.8.0)
 
-- Tasks come from asking Gradle (`./gradlew tasks --all`), since most come from plugins and can't be read from build files.
-- Cached per project; the cache is reused until build inputs change (`build.gradle*`, `settings.gradle*`, `gradle.properties`, `gradle/libs.versions.toml`, `buildSrc/`). `hop --refresh` forces a re-read. First read shows a spinner.
-- One call at the root returns every module's tasks, so it serves both the default list and `--all`.
-- Only grouped tasks are shown by default (Build, Application, Verification, Documentation and custom groups); ungrouped low-level tasks (`compileJava`, `processResources`, …) need `--all-scripts`.
-- Failure (broken build, missing JDK, offline first run): other runners still show; one line explains (`hop: couldn't read Gradle tasks (exit 1); run "./gradlew tasks" to see why`); a previous cached list is used and marked stale; failures are never cached; reading gives up after 2 minutes (`HOP_GRADLE_TIMEOUT`).
+- `sources/gradle.ts`. The build is the nearest `settings.gradle(.kts)` above where hop starts, or else a lone `build.gradle(.kts)` (Gradle's own rule). Its `gradlew` is used if present, else `gradle` from PATH.
+- Tasks come from asking Gradle, since most come from plugins and can't be read from build files. Not by parsing `tasks --all` output: hop passes a small Groovy init script (`--init-script`) that, after configuration, writes every project's path, directory and tasks (name, group, description) as JSON to a file named by `-Dhop.out`. That gives each module's real directory (needed to know which module you're in; `tasks --all` doesn't say), and output from build scripts can't corrupt it. It only reports the top-level build (`gradle.parent == null`), not `buildSrc` or included builds. Run with `-q --console=plain --no-configuration-cache --no-configure-on-demand`. Checked on Gradle 8.14 and 9.8, with the configuration cache and configure-on-demand on, and a `buildSrc` with convention plugins: no warnings.
+- Cost: ~1 s with a warm daemon. The very first read in a fresh checkout can take minutes when the wrapper downloads Gradle (3m49s measured), so the timeout is 5 minutes (`HOP_GRADLE_TIMEOUT`, seconds), not 2 as first planned. While reading, a spinner shows on stderr (TTY only, after 150 ms).
+- Cached per build in the user cache folder (`HOP_CACHE` overrides; one JSON file per build root). Reused while a fingerprint of build inputs (path, mtime and size of every `*.gradle`, `*.gradle.kts`, `gradle.properties`, `gradle/*.versions.toml`, the wrapper properties, and `buildSrc/src`, `build-logic/src`; `build/`, `.gradle/`, `node_modules/` skipped) is unchanged. A cached run takes ~85 ms in total. `hop --refresh` forces a re-read.
+- Shown by default: tasks with a group, except the `help` and `build setup` groups (`dependencies`, `properties`, `wrapper`, `init`… for every module would swamp the list). Ungrouped tasks (`compileJava`, `processResources`…) and those groups need `--all-scripts`.
+- Failure (broken build, no JDK, offline first run): other runners still show; one line explains, with Gradle's "What went wrong" line or else the first thing it printed (`couldn't read Gradle tasks (exit 1: ERROR: JAVA_HOME is not set…); run "./gradlew tasks" to see why`); the last good list is used if there is one (`Showing the list from <date>`); failures are never cached, so the next run asks again.
+- History keys use the Gradle path (`@gradle::app:run`, `@gradle:build`), since every Gradle task runs from the build root.
 
 ### Maven
 
@@ -267,7 +273,13 @@ A project can have several runners; their tasks are merged into one list.
 
 ### Multi-module JVM builds
 
-Mirrors Node workspaces: in a module, its tasks plus the root build's; at the root, the root's tasks; `--all` adds every module, labelled `run (api)`. Tasks run through the root wrapper with module-qualified commands that also replay correctly from history, e.g. `./gradlew :api:run` / `../gradlew :api:run`, and `./mvnw -pl api mn:run` / `../mvnw -f ../pom.xml -pl api mn:run`. Each form gets checked against real builds before relying on it.
+Mirrors Node workspaces, adjusted to how Gradle treats names (checked with `--dry-run` on a real build): a bare task name run at the root runs in every module that has it, while from inside a module it runs only that module's.
+
+- **At the root:** each task name once, run across modules as Gradle does: `./gradlew test`.
+- **In a module:** that module's tasks, run by path (`../gradlew :app:test`), plus the root's tasks the module doesn't have, labelled `(root)` and run from the root project dir (`../gradlew -p .. run`; without `-p` Gradle would run only the current module's). Root tasks the module also has (`test (root)` next to `test`) were too noisy (every task twice) and aren't how Gradle users think in a module, so they only come with `--all`. This differs from Node workspaces, where root scripts always show.
+- **`--all`:** also every other module's tasks, labelled with the module path (`test (lib)`, `run (services:api)`).
+- Every task runs from the build root through its wrapper; the shell handoff spells the wrapper's path from where you are (`../../gradlew :app:run`), so lines replay from history in the same folder. Module paths work from any folder of the build. All forms were replayed from root, module and nested folders against a real wrapper build.
+- Maven (not built yet): `./mvnw -pl api mn:run` / `../mvnw -f ../pom.xml -pl api mn:run`, to be checked against real builds the same way.
 
 ## Future
 

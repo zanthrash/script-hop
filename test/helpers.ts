@@ -15,6 +15,9 @@ export async function makeProject(files: Record<string, unknown>): Promise<strin
   return root
 }
 
+/** Whether a real Gradle (and a JDK for it) is on PATH for tests that need one. */
+export const hasGradle = spawnSync('gradle', ['--version'], { shell: process.platform === 'win32' }).status === 0
+
 /** Whether a real `mise` is available for tests that need one. */
 export const hasMise = spawnSync('mise', ['--version']).status === 0
 

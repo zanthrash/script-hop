@@ -39,6 +39,18 @@ jobs:
         if: runner.os != 'Windows'
         with:
           install: false
+      # Gradle builds are tested against a real Gradle (skipped where it isn't installed):
+      # Gradle 8 with Node 22, Gradle 9 otherwise
+      - uses: actions/setup-java@v6
+        if: runner.os != 'Windows'
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v6
+        if: runner.os != 'Windows'
+        with:
+          gradle-version: ${{ matrix.node == 22 && '8.14.6' || '9.8.1' }}
+          cache-disabled: true
       - run: pnpm typecheck
       - run: pnpm test
 
