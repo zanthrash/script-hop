@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildCommand, toShell } from '../src/command.ts'
+import { buildCommand, commandFor, toShell } from '../src/command.ts'
 
 describe('buildCommand', () => {
   it.each([
@@ -38,5 +38,18 @@ describe('toShell', () => {
   it('single-quotes anything the shell would interpret', () => {
     expect(toShell({ bin: 'npm', args: ['run', 'test', '--', 'two words', "it's", '$HOME', '*.ts', ''] }))
       .toBe(`npm run test -- 'two words' 'it'\\''s' '$HOME' '*.ts' ''`)
+  })
+})
+
+describe('commandFor', () => {
+  it('runs mise tasks with mise run, separating extra args with --', () => {
+    expect(commandFor({ runner: 'mise', name: 'db:migrate' }, [])).toEqual({ bin: 'mise', args: ['run', 'db:migrate'] })
+    expect(commandFor({ runner: 'mise', name: 'test' }, ['--watch', 'x']))
+      .toEqual({ bin: 'mise', args: ['run', 'test', '--', '--watch', 'x'] })
+  })
+
+  it('uses the Node package manager for package.json scripts', () => {
+    expect(commandFor({ runner: 'pnpm', name: 'dev' }, [], '../..'))
+      .toEqual({ bin: 'pnpm', args: ['--dir', '../..', 'run', 'dev'] })
   })
 })

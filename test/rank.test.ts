@@ -104,3 +104,19 @@ describe('rank with workspace packages', () => {
     expect(rank(list, {}, 'api test', now).map((r) => [r.task.name, r.task.package])).toEqual([['test', 'api']])
   })
 })
+
+describe('rank with several runners', () => {
+  const runnerTask = (name: string, runner: Task['runner']): Task =>
+    ({ name, command: `echo ${name}`, cwd: '/repo', runner, source: runner === 'mise' ? 'mise' : 'pkg', scope: 'local' })
+
+  it('matches the runner name when the list mixes runners', () => {
+    const list = [runnerTask('dev', 'pnpm'), runnerTask('lint', 'mise'), runnerTask('test', 'mise')]
+    expect(rank(list, {}, 'mise', now).map((r) => r.task.name)).toEqual(['lint', 'test'])
+  })
+
+  it('ignores the runner name when there is only one runner', () => {
+    // "bu" must not match every task just because they all run with bun
+    const list = [runnerTask('build', 'bun'), runnerTask('dev', 'bun'), runnerTask('lint', 'bun')]
+    expect(rank(list, {}, 'bu', now).map((r) => r.task.name)).toEqual(['build'])
+  })
+})

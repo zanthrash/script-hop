@@ -1,8 +1,8 @@
 export const PMS = ['npm', 'pnpm', 'yarn', 'bun', 'deno'] as const
 export type PM = (typeof PMS)[number]
 
-/** What runs a task. Node package managers today; mise, Gradle and Maven to come. */
-export type RunnerId = PM
+/** What runs a task: a Node package manager, or mise (Gradle and Maven to come). */
+export type RunnerId = PM | 'mise'
 
 export interface Task {
   name: string
@@ -11,7 +11,7 @@ export interface Task {
   command: string
   description?: string
   /** Which file the task is defined in. */
-  source: 'pkg' | 'deno'
+  source: 'pkg' | 'deno' | 'mise'
   /**
    * Where the task comes from: the nearest package (`local`), the workspace root (`root`),
    * or, with `--all`, another workspace package (`package`).

@@ -34,6 +34,11 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install fish
       - run: pnpm install --frozen-lockfile --ignore-scripts
+      # mise tasks are tested against a real mise (skipped where it isn't installed)
+      - uses: jdx/mise-action@v5
+        if: runner.os != 'Windows'
+        with:
+          install: false
       - run: pnpm typecheck
       - run: pnpm test
 

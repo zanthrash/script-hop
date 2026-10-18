@@ -56,6 +56,11 @@ jobs:
       - name: Install fish for the shell tests
         if: runner.os == 'macOS'
         run: brew install fish
+      # mise tasks are tested against a real mise (skipped where it isn't installed)
+      - uses: jdx/mise-action@v5
+        if: runner.os != 'Windows'
+        with:
+          install: false
       - name: Test the executable
         run: |
           build/hop --version

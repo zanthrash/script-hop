@@ -1,11 +1,12 @@
 import { resolve } from 'node:path'
+import { miseSource } from './sources/mise.ts'
 import { nodeSource } from './sources/node.ts'
 import type { LoadOptions, Project, SourceResult, TaskSource } from './types.ts'
 
 export * from './types.ts'
 
 /** Every kind of task definition hop understands. */
-const SOURCES: TaskSource[] = [nodeSource]
+const SOURCES: TaskSource[] = [nodeSource, miseSource]
 
 /**
  * Tasks for the project hop was started in: each source finds its own nearest project

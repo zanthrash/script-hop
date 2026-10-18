@@ -1,6 +1,7 @@
 import * as fzf from 'fzf'
 import { Fzf, type FzfResultItem } from 'fzf'
-import { frecency, type Usage } from './history.ts'
+import { entryFor, frecency, type Usage } from './history.ts'
+import { mixesRunners } from './tags.ts'
 import type { Task } from './tasks.ts'
 
 // fzf's typings re-export its matchers with `export *`, which TypeScript doesn't pick up
@@ -25,7 +26,7 @@ export interface Ranked {
  * name, then frecency, then name.
  */
 export function rank(tasks: Task[], usage: Usage, query: string, now: number): Ranked[] {
-  const entryOf = (t: Task) => usage[t.cwd]?.[t.name]
+  const entryOf = (t: Task) => entryFor(usage, t)
   const scoreOf = (t: Task) => {
     const entry = entryOf(t)
     return entry ? frecency(entry, now) : -1
@@ -46,10 +47,12 @@ export function rank(tasks: Task[], usage: Usage, query: string, now: number): R
       .map((task) => ({ task, positions: [] }))
   }
 
-  // workspace package names are searchable too ("api test"); terms separated by spaces
-  // must all match, as in fzf's extended mode
+  // workspace package names are searchable too ("api test"), and runner names when the
+  // list mixes runners ("mise lint"); terms separated by spaces must all match, as in
+  // fzf's extended mode. The name comes first so highlight positions index into it.
+  const showRunner = mixesRunners(tasks)
   const byName: FzfResultItem<Task>[] = new Fzf(tasks, {
-    selector: (t: Task) => (t.package ? `${t.name} ${t.package}` : t.name),
+    selector: (t: Task) => [t.name, t.package, showRunner ? t.runner : undefined].filter(Boolean).join(' '),
     match: extendedMatch,
   }).find(query)
   const nameMatched = new Set(byName.map((m) => m.item))

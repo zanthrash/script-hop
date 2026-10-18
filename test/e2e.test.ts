@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
-import { makeProject } from './helpers.ts'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { hasMise, isolateMise, makeProject } from './helpers.ts'
 import { hopCommand } from './hop-under-test.ts'
 
 
@@ -45,5 +45,25 @@ describe('built hop binary', () => {
   it('prints its version', async () => {
     const dir = await makeProject({})
     expect((await hop(dir, ['-v'])).stdout).toMatch(/^\d+\.\d+\.\d+\n$/)
+  })
+})
+
+describe.skipIf(!hasMise)('built hop with mise', () => {
+  let restore: () => void
+  beforeAll(async () => { restore = await isolateMise() })
+  afterAll(() => restore())
+
+  it('lists and runs mise tasks alongside package.json scripts', async () => {
+    const dir = await makeProject({
+      'package.json': { scripts: { dev: 'echo pnpm-dev' } },
+      'pnpm-lock.yaml': '',
+      'mise.toml': '[tasks.greet]\nrun = "echo hello-from-mise"\n',
+      '.git/HEAD': '',
+    })
+    expect((await hop(dir, ['--list'])).stdout).toBe('dev\techo pnpm-dev\tpnpm\ngreet\techo hello-from-mise\tmise\n')
+    const result = await hop(dir, ['greet'])
+    expect(result.code).toBe(0)
+    expect(result.stdout).toContain('hello-from-mise')
+    expect(result.stderr).toContain('› mise run greet')
   })
 })

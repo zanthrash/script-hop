@@ -3,9 +3,10 @@ import { relative, sep } from 'node:path'
 import { parseArgs } from 'node:util'
 import pkg from '../package.json' with { type: 'json' }
 import { commandFor, toShell, type Command } from './command.ts'
-import { openHistory } from './history.ts'
+import { entryFor, frecency, historyKey, openHistory } from './history.ts'
 import { rank, type Ranked } from './rank.ts'
 import { isShell, SHELLS } from './shell.ts'
+import { mixesRunners, tagsFor } from './tags.ts'
 import { loadProject, PMS, type PM, type Task } from './tasks.ts'
 
 /** Everything `main` touches outside its own logic, injected so it can be tested. */
@@ -135,10 +136,11 @@ async function hop(argv: string[], io: IO): Promise<number> {
   const search = (q: string) => rank(project.tasks, history.usage(), q, io.now())
 
   if (args.list || (!io.isTTY && args.query === '')) {
+    // a third column carries the same labels as the picker: runner (when mixed), root, package
+    const showRunner = mixesRunners(project.tasks)
     for (const { task } of search('')) {
-      // a third column says where scripts outside the current package live
-      const where = task.scope === 'root' ? 'root' : task.package
-      io.stdout(`${task.name}\t${task.command}${where ? `\t${where}` : ''}\n`)
+      const tags = tagsFor(task, showRunner).join(', ')
+      io.stdout(`${task.name}\t${task.command}${tags ? `\t${tags}` : ''}\n`)
     }
     return 0
   }
@@ -149,17 +151,23 @@ async function hop(argv: string[], io: IO): Promise<number> {
     io.stderr('No previous run here\n')
   }
 
-  // An exact name runs straight away: the current package's script first, then the root's,
-  // then (with --all) another package's if only one has it. Otherwise the picker decides.
+  // An exact name runs straight away: the current package's first, then the root's, then
+  // (with --all) another package's. When several runners define it at the same level, the
+  // one your history clearly favours runs; otherwise the picker decides.
   const named = args.query ? project.tasks.filter((t) => t.name === args.query) : []
-  const exact = named.find((t) => t.scope === 'local') ?? named.find((t) => t.scope === 'root') ??
-    (named.length === 1 ? named[0] : undefined)
+  const level = (['local', 'root', 'package'] as const)
+    .map((scope) => named.filter((t) => t.scope === scope))
+    .find((tasks) => tasks.length > 0) ?? []
+  const exact = level.length === 1 ? level[0] : favoured(level)
   if (exact) return run(exact)
 
   if (!io.isTTY) {
-    if (named.length > 1) {
-      const where = named.map((t) => t.package).sort().join(', ')
+    if (level.length > 1 && level[0]?.scope === 'package') {
+      const where = level.map((t) => t.package).sort().join(', ')
       io.stderr(`"${args.query}" is in several packages: ${where}. Run it from that package, or in a terminal to pick.\n`)
+    } else if (level.length > 1) {
+      const runners = [...new Set(level.map((t) => t.runner))].sort().join(', ')
+      io.stderr(`"${args.query}" is defined by several runners: ${runners}. Run it in a terminal to pick.\n`)
     } else {
       io.stderr(`No script named "${args.query}"\n`)
     }
@@ -169,12 +177,25 @@ async function hop(argv: string[], io: IO): Promise<number> {
   const picked = await io.pick(search, args.query)
   return picked ? run(picked) : 130
 
+  /** Among same-named tasks, the one used clearly most: twice the frecency of the next. */
+  function favoured(tasks: Task[]): Task | undefined {
+    const usage = history.usage()
+    const scored = tasks
+      .map((t) => {
+        const entry = entryFor(usage, t)
+        return { t, score: entry ? frecency(entry, io.now()) : 0 }
+      })
+      .sort((a, b) => b.score - a.score)
+    const [top, next] = scored
+    return top && top.score > 0 && top.score >= 2 * (next?.score ?? 0) ? top.t : undefined
+  }
+
   function lastRun(tasks: Task[]): Task | undefined {
     const usage = history.usage()
     let latest: Task | undefined
     let latestAt = -Infinity
     for (const t of tasks) {
-      const at = usage[t.cwd]?.[t.name]?.lastRun ?? -Infinity
+      const at = entryFor(usage, t)?.lastRun ?? -Infinity
       if (at > latestAt) [latest, latestAt] = [t, at]
     }
     return latest
@@ -182,7 +203,7 @@ async function hop(argv: string[], io: IO): Promise<number> {
 
   async function run(task: Task): Promise<number> {
     try {
-      await history.record(task.cwd, task.name, io.now())
+      await history.record(task.cwd, historyKey(task), io.now())
     } catch (error) {
       // history is a convenience; never let it stop the script from running
       io.stderr(`hop: could not save history: ${(error as Error).message}\n`)

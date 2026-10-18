@@ -3,6 +3,7 @@ import { styleText } from 'node:util'
 import search from '@inquirer/search'
 import type { IO } from './app.ts'
 import type { Ranked } from './rank.ts'
+import { mixesRunners, tagsFor } from './tags.ts'
 import type { Task } from './tasks.ts'
 
 function highlight(name: string, positions: number[]): string {
@@ -10,8 +11,8 @@ function highlight(name: string, positions: number[]): string {
   return [...name].map((ch, i) => (hit.has(i) ? styleText(['bold', 'cyan'], ch) : ch)).join('')
 }
 
-function label({ task, positions }: Ranked): string {
-  const tags = [task.scope === 'root' && 'root', task.package, task.source === 'deno' && 'deno'].filter(Boolean)
+function label({ task, positions }: Ranked, showRunner: boolean): string {
+  const tags = tagsFor(task, showRunner)
   const suffix = tags.length > 0 ? styleText('dim', ` (${tags.join(', ')})`) : ''
   return highlight(task.name, positions) + suffix
 }
@@ -34,6 +35,8 @@ export const pick: IO['pick'] = async (rank, query) => {
   const onKey = (_: string, key: { name?: string } | undefined) => {
     if (key?.name === 'escape') controller.abort()
   }
+  // decided from the whole list, so labels don't come and go as the search narrows
+  const showRunner = mixesRunners(rank('').map((r) => r.task))
   emitKeypressEvents(process.stdin)
   process.stdin.on('keypress', onKey)
 
@@ -43,13 +46,14 @@ export const pick: IO['pick'] = async (rank, query) => {
         message: 'Run script',
         initialValue: query,
         pageSize: 12,
-        source: (term) =>
-          rank(term ?? '').map((r) => ({
+        source: (term) => {
+          return rank(term ?? '').map((r) => ({
             value: r.task,
-            name: label(r),
+            name: label(r, showRunner),
             short: r.task.name,
             description: footer(r.task),
-          })),
+          }))
+        },
       },
       { output: process.stderr, signal: controller.signal, clearPromptOnDone: true },
     )

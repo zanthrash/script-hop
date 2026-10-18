@@ -224,10 +224,17 @@ A project can have several runners; their tasks are merged into one list.
 - Wrappers are preferred over global installs: `./gradlew` over `gradle`, `./mvnw` over `mvn`.
 - hop doesn't pick a JDK: runners get the user's environment (e.g. `JAVA_HOME`/`PATH` from mise), exactly as when typing `./gradlew` by hand.
 
-### mise tasks
+### mise tasks (built, 0.7.0)
 
-- From `mise tasks --json`. Only tasks from config files inside the project (the project directory and its parents up to the repository root); global tasks (`~/.config/mise/config.toml`) are left out.
-- Run with `mise run <task>`.
+- `sources/mise.ts`. mise is only started when a mise config or task directory exists in the project (`mise.toml`, `.mise.toml`, `.mise/tasks`, …), so other projects don't pay for it. `mise tasks --json` takes ~15 ms, so no cache.
+- Tasks marked `global` are left out, and so are tasks whose source file is outside the repository root (nearest `.git`). Hidden tasks come with `--all-scripts` (`--hidden`). File tasks show their path as the command.
+- mise reports real paths (symlinks resolved, e.g. `/var` → `/private/var` on macOS). Comparisons use real paths; tasks are shown and run under the path the user is in.
+- Run with `mise run <task> -- <args>`; exit codes pass through. `mise --cd <dir>` is supported for the shell handoff but not needed (mise finds its config from subdirectories).
+- Untrusted configs are skipped by mise without any message, so their tasks don't appear; documented (`mise trust`).
+- History keys: package.json/deno.json scripts keep the bare name (existing history keeps working, and survives switching npm ↔ pnpm); other runners use `@<runner>:<name>`, so same-named tasks of two runners in one folder rank separately.
+- Labels (`tags.ts`): runner shown in the picker and `--list` only when the list mixes runners, decided from the whole list (not the filtered one); the runner name is searchable only then, so `bu` in a bun project doesn't match everything.
+- Same name in several runners at the same level: the task with at least twice the frecency of the next runs; otherwise the picker (non-TTY: error naming the runners).
+- Tested against real mise with an isolated global config and trust settings; CI installs mise (`jdx/mise-action`) on Linux and macOS, including for the standalone executables.
 
 ### Gradle
 

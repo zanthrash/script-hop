@@ -1,6 +1,6 @@
 # script-hop
 
-Fuzzy-find and run your package.json scripts. The ones you use most are always at the top.
+Fuzzy-find and run your project's scripts and tasks (package.json, deno.json, mise). The ones you use most are always at the top.
 
 ```
 $ hop
@@ -81,7 +81,7 @@ Workspace-root scripts are saved with their directory spelled out (e.g. `pnpm --
 |---|---|
 | `-l`, `--last` | Rerun the last script run in this project |
 | `-a`, `--all` | Include the scripts of every workspace package |
-| `--list` | Print scripts in ranked order (`name<TAB>command`, plus `<TAB>root` or `<TAB>package` for scripts outside the current package) and exit |
+| `--list` | Print scripts in ranked order (`name<TAB>command`, plus a third column with the same labels as the picker: runner when mixed, `root`, package) and exit |
 | `--pm <name>` | Use this package manager: `npm`, `pnpm`, `yarn`, `bun` or `deno` |
 | `--all-scripts` | Include lifecycle scripts and pre/post hooks |
 | `--reset-history` | Forget all usage history |
@@ -125,6 +125,21 @@ With `-a` / `--all`, every package in the workspace is included, labelled with i
 ### Deno
 
 When deno is the runner, tasks from `deno.json` / `deno.jsonc` are listed alongside package.json scripts, labelled `(deno)`. If both define the same name, deno.json wins, as with `deno task`.
+
+### mise tasks
+
+If the project has [mise](https://mise.jdx.dev) tasks (`[tasks]` in `mise.toml`, or scripts in `.mise/tasks/`), they're listed alongside package.json scripts and run with `mise run`. Only tasks defined inside the project are shown, not ones from your global mise config. Hidden tasks (`hide = true`) appear with `--all-scripts`. mise skips config files you haven't trusted, so run `mise trust` in a new project if its tasks don't show up.
+
+When a project mixes runners, each task is labelled with the one that runs it:
+
+```
+❯ build (pnpm)
+  build (mise)
+  dev (pnpm)
+  lint (mise)
+```
+
+The runner name is searchable (`mise b` finds `build (mise)`). If you type a name more than one runner defines, such as `hop build`, the picker opens so you can choose, unless you've clearly used one of them more, in which case that one runs.
 
 ### Hidden scripts
 

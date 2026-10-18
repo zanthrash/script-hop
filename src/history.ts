@@ -84,3 +84,17 @@ export async function openHistory(file: string): Promise<History> {
     },
   }
 }
+
+/**
+ * A task's key within its directory's history. package.json and deno.json scripts use the
+ * bare name, as they always have (so history survives switching npm <-> pnpm); other
+ * runners are prefixed, so `build (mise)` and `build (pnpm)` in one folder stay apart.
+ */
+export function historyKey(task: { name: string; runner: string; source: string }): string {
+  return task.source === 'pkg' || task.source === 'deno' ? task.name : `@${task.runner}:${task.name}`
+}
+
+/** A task's history entry, if it has been run. */
+export function entryFor(usage: Usage, task: { cwd: string; name: string; runner: string; source: string }): Entry | undefined {
+  return usage[task.cwd]?.[historyKey(task)]
+}

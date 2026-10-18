@@ -1,10 +1,10 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { main, type IO } from '../src/app.ts'
 import type { Command } from '../src/command.ts'
 import type { Ranked } from '../src/rank.ts'
-import { makeProject } from './helpers.ts'
+import { hasMise, isolateMise, makeProject } from './helpers.ts'
 
 // a clock that moves forward on every read, so successive runs are ordered
 let clock = Date.UTC(2026, 9, 12)
@@ -403,5 +403,58 @@ describe('hop --all', () => {
     const h = await harness(join(root, 'packages/web'), { env: { HOP_CMD_FILE: file } })
     await main(['--all', 'migrate'], h.io)
     expect(await readFile(file, 'utf8')).toBe('pnpm --dir ../api run migrate\n')
+  })
+})
+
+describe.skipIf(!hasMise)('several runners in one project', () => {
+  let restore: () => void
+  beforeAll(async () => { restore = await isolateMise() })
+  afterAll(() => restore())
+
+  const mixed = () => makeProject({
+    'package.json': { scripts: { dev: 'vite', build: 'vite build' } },
+    'pnpm-lock.yaml': '',
+    'mise.toml': '[tasks.build]\nrun = "cargo build"\n\n[tasks.lint]\nrun = "cargo clippy"\n',
+    '.git/HEAD': '',
+  })
+
+  it('labels each script with its runner in --list', async () => {
+    const h = await harness(await mixed())
+    await main(['--list'], h.io)
+    expect(h.out().split('\n').filter(Boolean).sort()).toEqual([
+      'build\tcargo build\tmise',
+      'build\tvite build\tpnpm',
+      'dev\tvite\tpnpm',
+      'lint\tcargo clippy\tmise',
+    ])
+  })
+
+  it('runs a name only one runner has, with that runner', async () => {
+    const h = await harness(await mixed())
+    await main(['lint'], h.io)
+    expect(h.runs[0]?.command).toEqual({ bin: 'mise', args: ['run', 'lint'] })
+  })
+
+  it('opens the picker for a name both runners have', async () => {
+    const h = await harness(await mixed(), { pick: (choices) => choices.find((c) => c.task.runner === 'mise')?.task })
+    await main(['build'], h.io)
+    expect(h.picks[0]?.query).toBe('build')
+    expect(h.runs[0]?.command).toEqual({ bin: 'mise', args: ['run', 'build'] })
+  })
+
+  it('without a terminal, fails on a name both runners have and names them', async () => {
+    const h = await harness(await mixed(), { tty: false })
+    expect(await main(['build'], h.io)).toBe(1)
+    expect(h.err()).toMatch(/"build" is defined by several runners: mise, pnpm/)
+  })
+
+  it('runs the one your history clearly favours', async () => {
+    const dir = await mixed()
+    const first = await harness(dir, { pick: (choices) => choices.find((c) => c.task.runner === 'mise')?.task })
+    await main(['build'], first.io) // picked mise once
+    const h = await harness(dir, { historyFile: first.io.historyFile })
+    await main(['build'], h.io)
+    expect(h.picks).toEqual([])
+    expect(h.runs[0]?.command).toEqual({ bin: 'mise', args: ['run', 'build'] })
   })
 })

@@ -19,6 +19,11 @@ const runArgs: Record<PM, (name: string, dir?: string) => string[]> = {
 
 /** The command that runs `task`, optionally from another directory (for shell history). */
 export function commandFor(task: Pick<Task, 'runner' | 'name'>, extraArgs: string[], dir?: string): Command {
+  if (task.runner === 'mise') {
+    // `--` keeps flags meant for the task away from `mise run`'s own options
+    const extra = extraArgs.length > 0 ? ['--', ...extraArgs] : []
+    return { bin: 'mise', args: [...(dir ? ['--cd', dir] : []), 'run', task.name, ...extra] }
+  }
   return buildCommand(task.runner, task.name, extraArgs, dir)
 }
 
