@@ -1,7 +1,9 @@
 import { writeFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import { parseArgs } from 'node:util'
 import pkg from '../package.json' with { type: 'json' }
 import { commandFor, handoffDir, toShell, type Command } from './command.ts'
+import { hintDue, initHint } from './hint.ts'
 import { entryFor, frecency, historyKey, openHistory } from './history.ts'
 import { rank, type Ranked } from './rank.ts'
 import { isShell, SHELLS } from './shell.ts'
@@ -231,6 +233,13 @@ async function hop(argv: string[], io: IO): Promise<number> {
       const line = toShell(commandFor(task, args.extraArgs, handoffDir(task, io.cwd)))
       await writeFile(handoff, `${line}\n`)
       return 0
+    }
+
+    // Without the wrapper the command can't reach shell history; say so (at most daily) in
+    // case the init line was lost from the shell config
+    const hintFile = join(dirname(io.historyFile), 'init-hint')
+    if (io.isTTY && !io.env.HOP_NO_INIT_HINT && await hintDue(hintFile, io.now())) {
+      io.stderr(initHint(io.env.SHELL))
     }
 
     const command = commandFor(task, args.extraArgs)

@@ -26,6 +26,7 @@ async function harness(cwd: string, opts: {
   historyFile?: string
   env?: Record<string, string>
   cacheDir?: string
+  now?: () => number
 } = {}): Promise<Harness> {
   let out = ''
   let err = ''
@@ -39,7 +40,7 @@ async function harness(cwd: string, opts: {
     picks,
     io: {
       cwd,
-      now: tick,
+      now: opts.now ?? tick,
       isTTY: opts.tty ?? true,
       env: opts.env ?? {},
       historyFile,
@@ -322,6 +323,83 @@ describe('shell integration handoff (HOP_CMD_FILE)', () => {
   })
 })
 
+describe('hint when shell integration is not loaded', () => {
+  const HINT = /shell integration isn't loaded/
+  const HOUR = 60 * 60 * 1000
+
+  it('says how to load it for the user\'s shell when a task runs without the wrapper', async () => {
+    const h = await harness(await basic(), { env: { SHELL: '/opt/homebrew/bin/fish' } })
+    expect(await main(['dev'], h.io)).toBe(0)
+    expect(h.runs).toHaveLength(1)
+    expect(h.err()).toMatch(HINT)
+    expect(h.err()).toContain('hop --init fish | source')
+    expect(h.err()).toContain('~/.config/fish/config.fish')
+    expect(h.err()).toContain('HOP_NO_INIT_HINT=1')
+    // the hint comes before the command line
+    expect(h.err().indexOf('shell integration')).toBeLessThan(h.err().indexOf('› npm run dev'))
+  })
+
+  it.each([
+    ['/bin/zsh', 'eval "$(hop --init zsh)"', '~/.zshrc'],
+    ['/bin/bash', 'eval "$(hop --init bash)"', '~/.bashrc'],
+  ])('gives the line for %s', async (shell, line, file) => {
+    const h = await harness(await basic(), { env: { SHELL: shell } })
+    await main(['dev'], h.io)
+    expect(h.err()).toContain(line)
+    expect(h.err()).toContain(file)
+  })
+
+  it('points at --init for a shell it has no integration for', async () => {
+    const envs: Record<string, string>[] = [{ SHELL: '/usr/bin/nu' }, {}]
+    for (const env of envs) {
+      const h = await harness(await basic(), { env })
+      await main(['dev'], h.io)
+      expect(h.err()).toMatch(HINT)
+      expect(h.err()).toContain('hop --init fish|zsh|bash')
+    }
+  })
+
+  it('shows at most once a day', async () => {
+    let now = Date.UTC(2026, 10, 16, 9)
+    const h = await harness(await basic(), { env: { SHELL: '/bin/zsh' }, now: () => now })
+    const hints = () => h.err().match(new RegExp(HINT, 'g'))?.length ?? 0
+
+    await main(['dev'], h.io)
+    now += 23 * HOUR
+    await main(['dev'], h.io)
+    expect(hints()).toBe(1)
+
+    now += 2 * HOUR
+    await main(['dev'], h.io)
+    expect(hints()).toBe(2)
+    expect(h.runs).toHaveLength(3)
+  })
+
+  it('stays quiet with the wrapper, with HOP_NO_INIT_HINT, without a terminal, or when nothing runs', async () => {
+    const cmd = join(await makeProject({ 'cmd': '' }), 'cmd')
+    const cases: { opts: Parameters<typeof harness>[1]; argv: string[] }[] = [
+      { opts: { env: { HOP_CMD_FILE: cmd } }, argv: ['dev'] },
+      { opts: { env: { HOP_NO_INIT_HINT: '1' } }, argv: ['dev'] },
+      { opts: { tty: false }, argv: ['dev'] },
+      { opts: {}, argv: ['--list'] },
+      { opts: { pick: () => undefined }, argv: [] },
+    ]
+    for (const { opts, argv } of cases) {
+      const h = await harness(await basic(), opts)
+      await main(argv, h.io)
+      expect(h.err(), JSON.stringify({ opts, argv })).not.toMatch(HINT)
+    }
+  })
+
+  it('still runs the task when the hint state cannot be saved', async () => {
+    const blocker = await makeProject({ 'file': '' })
+    const h = await harness(await basic(), { historyFile: join(blocker, 'file', 'history.json') })
+    expect(await main(['dev'], h.io)).toBe(0)
+    expect(h.runs).toHaveLength(1)
+    expect(h.err()).toMatch(HINT)
+  })
+})
+
 describe('hop --init', () => {
   it.each([
     ['fish', ['function hop', 'HOP_CMD_FILE', 'history append']],
@@ -507,7 +585,7 @@ describe.skipIf(process.platform === 'win32')('Gradle builds', () => {
 
   it("runs a module's task through the root wrapper", async () => {
     const root = await gradleBuild()
-    const h = await harness(join(root, 'app/src/main'))
+    const h = await harness(join(root, 'app/src/main'), { env: { HOP_NO_INIT_HINT: '1' } })
     expect(await main(['run', '--', '--args=x'], h.io)).toBe(0)
     expect(h.runs).toEqual([{ command: { bin: './gradlew', args: [':app:run', '--args=x'] }, cwd: root }])
     expect(h.err()).toBe('› ./gradlew :app:run --args=x\n')
@@ -583,7 +661,7 @@ describe('Maven builds', () => {
 
   it("runs a module's goal from the root, building what it depends on", async () => {
     const root = await build()
-    const h = await harness(root)
+    const h = await harness(root, { env: { HOP_NO_INIT_HINT: '1' } })
     expect(await main(['mn:run'], h.io)).toBe(0)
     expect(h.err()).toBe('› ./mvnw -pl :app -am mn:run\n')
   })

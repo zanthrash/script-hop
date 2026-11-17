@@ -73,6 +73,8 @@ If you use [atuin](https://atuin.sh), the command is also recorded in atuin's hi
 eval "$(hop --init zsh)"
 ```
 
+If `hop` runs a script in a terminal without the integration loaded (say the line went missing from your shell config), it reminds you, at most once a day. Set `HOP_NO_INIT_HINT=1` if you don't want the integration.
+
 Workspace-root scripts are saved with their directory spelled out (e.g. `pnpm --dir ../.. run lint`), so rerunning them from history works from the same place.
 
 ### Options
@@ -95,6 +97,7 @@ Workspace-root scripts are saved with their directory spelled out (e.g. `pnpm --
 | `HOP_PM` | Same as `--pm` |
 | `HOP_HISTORY` | Where to keep usage history |
 | `HOP_CACHE` | Where to cache Gradle task lists |
+| `HOP_NO_INIT_HINT` | Don't remind you when shell integration isn't loaded |
 | `HOP_GRADLE_TIMEOUT` | Seconds to wait for Gradle to list tasks (default 300) |
 
 ## How it works
